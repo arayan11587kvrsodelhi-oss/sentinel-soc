@@ -5,7 +5,9 @@ async def main():
     print("Connecting...")
 
     try:
-        async with websockets.connect("ws://localhost:8000/ws/events") as ws:
+     async with websockets.connect(
+    "wss://sentinel-soc-gamma.vercel.app/ws/events"
+) as ws:
             print("CONNECTED!")
 
             while True:

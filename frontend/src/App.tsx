@@ -1,298 +1,297 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import { Header } from "./components/Header";
+import { StatsBar } from "./components/StatsBar";
+import { LiveEventStream } from "./components/LiveEventStream";
+import { IncidentList } from "./components/IncidentList";
+import { AiAnalystPanel } from "./components/AiAnalystPanel";
+import { VulnerabilityExplorer } from "./components/VulnerabilityExplorer";
+import { EventDetailDrawer } from "./components/EventDetailDrawer";
+import { IncidentDetailDrawer } from "./components/IncidentDetailDrawer";
+import { VulnerabilityModal } from "./components/VulnerabilityModal";
+
+import { useSentinelWebSocket } from "./hooks/useSentinelWebSocket";
+import { api } from "./services/api";
 import {
-  Activity,
-  AlertTriangle,
-  Brain,
-  Database,
-  Shield,
-  Wifi,
-} from "lucide-react";
-
-const API = "https://sentinel-soc-api-qpzg.onrender.com";
-
-type Event = {
-  id: string;
-  type: string;
-  severity: string;
-  source: string;
-  timestamp: string;
-};
+  SecurityEvent,
+  Incident,
+  IncidentStatus,
+  Vulnerability,
+  AiAnalysisResult,
+} from "./types";
 
 export default function App() {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [vulns, setVulns] = useState<any[]>([]);
-  const [connected, setConnected] = useState(false);
+  const {
+    status: wsStatus,
+    events,
+    incidents,
+    latencyMs,
+    triggerScenario,
+    setIncidents,
+    clearEvents,
+  } = useSentinelWebSocket();
+
+  // Vulnerability Intelligence State
+  const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
+  const [vulnTotal, setVulnTotal] = useState<number>(0);
+  const [vulnLastUpdated, setVulnLastUpdated] = useState<string>(new Date().toISOString());
+  const [vulnCached, setVulnCached] = useState<boolean>(false);
+  const [vulnDataSource, setVulnDataSource] = useState<string>("CACHED_NVD");
+  const [kevCatalogTotal, setKevCatalogTotal] = useState<number>(0);
+  const [kevDataSource, setKevDataSource] = useState<string>("CACHED_CISA_KEV");
+  const [vulnLoading, setVulnLoading] = useState<boolean>(true);
+
+  // AI Analyst State
+  const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiContext, setAiContext] = useState<{
+    type: "EVENT" | "INCIDENT" | "MANUAL" | null;
+    event?: SecurityEvent | null;
+    incident?: Incident | null;
+  }>({ type: null });
+
+  // Detail Panels / Modals State
+  const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
+
+  // Initial Load: Fetch NVD vulnerabilities, KEV catalog size & active incidents
+  const loadIntelligence = useCallback(async (forceRefresh = false) => {
+    setVulnLoading(true);
+    try {
+      const [nvdData, kevData] = await Promise.allSettled([
+        api.getVulnerabilities({ limit: 40, force_refresh: forceRefresh }),
+        api.getKevCatalog({ limit: 5, force_refresh: forceRefresh }),
+      ]);
+
+      if (nvdData.status === "fulfilled" && nvdData.value?.vulnerabilities) {
+        const data = nvdData.value;
+        setVulnerabilities(data.vulnerabilities);
+        setVulnTotal(data.total || data.vulnerabilities.length);
+        setVulnLastUpdated(data.last_updated || new Date().toISOString());
+        setVulnCached(data.cached ?? true);
+        setVulnDataSource(data.data_source || (data.cached ? "CACHED_NVD" : "LIVE_NVD"));
+      }
+
+      if (kevData.status === "fulfilled" && kevData.value) {
+        const data = kevData.value;
+        setKevCatalogTotal(data.catalog_size || data.total || 0);
+        setKevDataSource(data.data_source || (data.cached ? "CACHED_CISA_KEV" : "LIVE_CISA_KEV"));
+      }
+    } catch (err) {
+      console.error("Failed to load vulnerability intelligence:", err);
+    } finally {
+      setVulnLoading(false);
+    }
+  }, []);
+
+  const loadIncidents = useCallback(async () => {
+    try {
+      const data = await api.getIncidents();
+      if (Array.isArray(data) && data.length > 0) {
+        setIncidents(data);
+      }
+    } catch (err) {
+      console.warn("Failed to load incidents:", err);
+    }
+  }, [setIncidents]);
 
   useEffect(() => {
-    // Load NVD vulnerabilities
-    fetch(`${API}/api/vulnerabilities`)
-      .then((response) => {
-        console.log("NVD API status:", response.status);
+    loadIntelligence();
+    loadIncidents();
+  }, [loadIntelligence, loadIncidents]);
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-
-        return response.json();
-      })
-      .then((data) => {
-        console.log("✅ NVD data received:", data);
-        setVulns(data);
-      })
-      .catch((error) => {
-        console.error("❌ NVD API failed:", error);
-        setVulns([]);
-      });
-
-    // WebSocket
-let ws: WebSocket | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let disposed = false;
-
-const connect = () => {
-  if (disposed) return;
-
-  console.log("🔌 Connecting to WebSocket...");
-
-  const WS_URL = "wss://sentinel-soc-api-qpzg.onrender.com/ws/events";
-
-  ws = new WebSocket(WS_URL);
-
-  ws.onopen = () => {
-    console.log("✅ WebSocket connected");
-    setConnected(true);
-  };
-
-  ws.onmessage = (e) => {
+  // AI Triage Handlers
+  const handleAnalyzeEvent = async (event: SecurityEvent) => {
+    setAiLoading(true);
+    setAiContext({ type: "EVENT", event });
     try {
-      const event: Event = JSON.parse(e.data);
-
-      console.log("📡 Event received:", event);
-
-      setEvents((prev) => [event, ...prev].slice(0, 20));
-    } catch (error) {
-      console.error("❌ Invalid WebSocket message:", error);
+      const result = await api.analyzeTelemetry({
+        event_id: event.event_id || event.id,
+        event_type: event.event_type || event.type,
+        severity: event.severity,
+        source_ip: event.source_ip,
+        target: event.target,
+        details: event.message,
+      });
+      setAiAnalysis(result);
+    } catch (err) {
+      console.error("AI Analysis failed:", err);
+    } finally {
+      setAiLoading(false);
     }
   };
 
-  ws.onerror = (error) => {
-    console.error("❌ WebSocket error:", error);
-  };
+  const handleAiTriageIncident = async (incident: Incident) => {
+    setAiLoading(true);
+    setAiContext({ type: "INCIDENT", incident });
+    try {
+      const result = await api.aiTriageIncident(incident.incident_id || incident.id || "");
+      setAiAnalysis(result);
 
-  ws.onclose = () => {
-    console.log("🔌 WebSocket disconnected");
-    setConnected(false);
-
-    if (!disposed) {
-      reconnectTimer = setTimeout(connect, 2000);
+      // Cache analysis on incident object locally
+      setIncidents((prev) =>
+        prev.map((i) =>
+          (i.incident_id || i.id) === (incident.incident_id || incident.id)
+            ? { ...i, ai_analysis: result }
+            : i
+        )
+      );
+    } catch (err) {
+      console.error("Incident AI triage failed:", err);
+    } finally {
+      setAiLoading(false);
     }
   };
-};
 
-connect();
+  const handleRunLiveTriage = async () => {
+    if (aiContext.type === "INCIDENT" && aiContext.incident) {
+      return handleAiTriageIncident(aiContext.incident);
+    }
+    if (aiContext.type === "EVENT" && aiContext.event) {
+      return handleAnalyzeEvent(aiContext.event);
+    }
 
-return () => {
-  disposed = true;
-
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-  }
-
-    if (ws) {
-      ws.onclose = null;
-      ws.onerror = null;
-
-      if (
-        ws.readyState === WebSocket.OPEN ||
-        ws.readyState === WebSocket.CONNECTING
-      ) {
-        ws.close();
-      }
+    // Default: Analyze top active incident or most recent critical event
+    const criticalEvent = events.find((e) => e.severity === "CRITICAL") || events[0];
+    if (criticalEvent) {
+      return handleAnalyzeEvent(criticalEvent);
+    }
+    const activeInc = incidents[0];
+    if (activeInc) {
+      return handleAiTriageIncident(activeInc);
     }
   };
-}, []);
 
-const critical = events.filter(
-    (event) => event.severity === "CRITICAL"
+  // Status Lifecycle Update Handler
+  const handleUpdateIncidentStatus = async (incidentId: string, status: IncidentStatus) => {
+    // Optimistic update
+    setIncidents((prev) =>
+      prev.map((inc) =>
+        (inc.incident_id || inc.id) === incidentId ? { ...inc, status } : inc
+      )
+    );
+    if (selectedIncident && (selectedIncident.incident_id || selectedIncident.id) === incidentId) {
+      setSelectedIncident((prev) => (prev ? { ...prev, status } : null));
+    }
+
+    try {
+      await api.updateIncidentStatus(incidentId, status);
+    } catch (err) {
+      console.error(`Failed to update incident status for ${incidentId}:`, err);
+    }
+  };
+
+  // Metrics calculation
+  const criticalCount = events.filter((e) => e.severity === "CRITICAL").length;
+  const highCount = events.filter((e) => e.severity === "HIGH").length;
+  const activeIncidentsCount = incidents.filter(
+    (i) => i.status === "OPEN" || i.status === "INVESTIGATING"
   ).length;
-
-  const high = events.filter(
-    (event) => event.severity === "HIGH"
-  ).length;
+  const kevCount = vulnerabilities.filter((v) => v.is_kev).length;
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <Shield />
-          SENTINEL <span>SOC</span>
-        </div>
+      {/* Top Header */}
+      <Header
+        wsStatus={wsStatus}
+        latencyMs={latencyMs}
+        onTriggerScenario={triggerScenario}
+        onRefreshData={() => loadIntelligence(true)}
+      />
 
-        <div className="live">
-          <i className={connected ? "dot on" : "dot"} />
-          {connected ? "LIVE" : "OFFLINE"}
-        </div>
-      </header>
-
+      {/* Hero Mission Statement */}
       <section className="hero">
-        <p className="eyebrow">SECURITY OPERATIONS CENTER</p>
-
+        <p className="eyebrow">DEFENSIVE SECURITY OPERATIONS CENTER</p>
         <h1>
           Threat intelligence.
           <br />
           <em>Under control.</em>
         </h1>
-
         <p className="sub">
-          Current vulnerability intelligence + controlled real-time
-          simulation + AI-assisted defensive analysis.
+          Current vulnerability intelligence + controlled real-time simulation + AI-assisted defensive analysis.
         </p>
       </section>
 
-      <section className="stats">
-        <Stat
-          icon={<AlertTriangle />}
-          label="Critical Events"
-          value={critical}
+      {/* Top Metrics Grid */}
+      <StatsBar
+        criticalCount={criticalCount}
+        highCount={highCount}
+        activeIncidentsCount={activeIncidentsCount}
+        nvdCount={vulnTotal}
+        kevCount={kevCatalogTotal || vulnerabilities.filter((v) => v.is_kev).length}
+        wsStatus={wsStatus}
+        nvdDataSource={vulnDataSource}
+        kevDataSource={kevDataSource}
+      />
+
+      {/* Primary SOC Workspace Grid: Stream + Incidents */}
+      <section className="layout-grid">
+        <LiveEventStream
+          events={events}
+          selectedEventId={selectedEvent?.event_id || selectedEvent?.id}
+          onSelectEvent={(ev) => setSelectedEvent(ev)}
+          onAnalyzeEvent={(ev) => handleAnalyzeEvent(ev)}
+          onClearEvents={clearEvents}
         />
 
-        <Stat
-          icon={<Activity />}
-          label="High Events"
-          value={high}
-        />
-
-        <Stat
-          icon={<Database />}
-          label="NVD Records"
-          value={vulns.length}
-        />
-
-        <Stat
-          icon={<Wifi />}
-          label="WebSocket"
-          value={connected ? "ONLINE" : "OFFLINE"}
+        <IncidentList
+          incidents={incidents}
+          selectedIncidentId={selectedIncident?.incident_id || selectedIncident?.id}
+          onSelectIncident={(inc) => setSelectedIncident(inc)}
+          onAiTriageIncident={(inc) => handleAiTriageIncident(inc)}
+          onUpdateStatus={handleUpdateIncidentStatus}
         />
       </section>
 
-      <section className="grid">
-        <div className="panel">
-          <div className="panel-head">
-            <h2>LIVE EVENT STREAM</h2>
-            <span>SIMULATION</span>
-          </div>
+      {/* Secondary Workspace Grid: Sentinel AI + Vulnerabilities */}
+      <section className="layout-grid">
+        <AiAnalystPanel
+          analysis={aiAnalysis}
+          loading={aiLoading}
+          selectedContext={aiContext}
+          onRunLiveTriage={handleRunLiveTriage}
+        />
 
-          <div>
-            {events.length === 0 ? (
-              <p className="muted">Waiting for events…</p>
-            ) : (
-              events.map((event) => (
-                <div className="log" key={event.id}>
-                  <time>
-                    {new Date(
-                      event.timestamp
-                    ).toLocaleTimeString()}
-                  </time>
-
-                  <b className={event.severity.toLowerCase()}>
-                    {event.severity}
-                  </b>
-
-                  <strong>{event.type}</strong>
-
-                  <small>{event.source}</small>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-head">
-            <h2>AI ANALYST</h2>
-            <Brain size={18} />
-          </div>
-
-          <div className="ai-card">
-            <p className="eyebrow">DEFENSIVE ANALYSIS</p>
-
-            <h3>Sentinel AI is ready.</h3>
-
-            <p>
-              Send an event to{" "}
-              <code>POST /api/ai/analyze</code> for risk
-              assessment, classification, summary and defensive
-              recommendations.
-            </p>
-          </div>
-        </div>
+        <VulnerabilityExplorer
+          vulnerabilities={vulnerabilities}
+          loading={vulnLoading}
+          totalCount={vulnTotal}
+          lastUpdated={vulnLastUpdated}
+          isCached={vulnCached}
+          dataSource={vulnDataSource}
+          onSelectVulnerability={(vuln) => setSelectedVuln(vuln)}
+          onForceRefresh={() => loadIntelligence(true)}
+        />
       </section>
 
-      <section className="panel">
-        <div className="panel-head">
-          <h2>CURRENT NVD VULNERABILITIES</h2>
-          <span>PUBLIC INTELLIGENCE</span>
-        </div>
+      {/* Forensic Detail Drawers & Modals */}
+      <EventDetailDrawer
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        onAnalyzeEvent={handleAnalyzeEvent}
+      />
 
-        <div className="vulns">
-          {vulns.slice(0, 10).map((vulnerability) => (
-            <article
-              className="vuln"
-              key={vulnerability.id}
-            >
-              <strong>
-                {vulnerability.id || "Unavailable"}
-              </strong>
+      <IncidentDetailDrawer
+        incident={selectedIncident}
+        recentEvents={events}
+        onClose={() => setSelectedIncident(null)}
+        onUpdateStatus={handleUpdateIncidentStatus}
+        onAiTriageIncident={handleAiTriageIncident}
+        onSelectEvent={(ev) => setSelectedEvent(ev)}
+      />
 
-              <span>
-                {vulnerability.cvss ?? "—"} CVSS
-              </span>
+      <VulnerabilityModal
+        vulnerability={selectedVuln}
+        onClose={() => setSelectedVuln(null)}
+      />
 
-              <p>
-                {vulnerability.description ||
-                  vulnerability.error ||
-                  "No description available."}
-              </p>
-            </article>
-          ))}
-
-          {!vulns.length && (
-            <p className="muted">
-              No vulnerability data loaded yet.
-            </p>
-          )}
-        </div>
-      </section>
-
+      {/* SOC Footer */}
       <footer>
-        <span>SENTINEL SOC · EDUCATIONAL PROJECT</span>
-
+        <span>SENTINEL SOC · EDUCATIONAL CYBERSECURITY OPERATIONS PLATFORM</span>
         <span>
-          Simulation events are synthetic. Intelligence is
-          sourced from public feeds.
+          Simulation events are synthetic and clearly labeled. Public threat intelligence is sourced from NIST NVD & CISA KEV feeds.
         </span>
       </footer>
     </main>
-  );
-}
-
-function Stat({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="stat">
-      <div className="icon">{icon}</div>
-
-      <div>
-        <small>{label}</small>
-        <strong>{value}</strong>
-      </div>
-    </div>
   );
 }

@@ -1,12 +1,8 @@
 node_modules/
 dist/
-.venv/
-__pycache__/
-*.pyc
+.vercel
 .env
 .env.*
 !.env.example
-*.db
-.vercel/
 *.tsbuildinfo
 
