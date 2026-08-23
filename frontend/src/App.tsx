@@ -8,7 +8,7 @@ import {
   Wifi,
 } from "lucide-react";
 
-const API = "http://localhost:8000";
+const API = "https://sentinel-soc-api-qpzg.onrender.com";
 
 type Event = {
   id: string;
@@ -45,72 +45,74 @@ export default function App() {
       });
 
     // WebSocket
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let disposed = false;
+let ws: WebSocket | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let disposed = false;
 
-    const connect = () => {
-      if (disposed) return;
+const connect = () => {
+  if (disposed) return;
 
-      console.log("🔌 Connecting to WebSocket...");
+  console.log("🔌 Connecting to WebSocket...");
 
-      ws = new WebSocket("ws://localhost:8000/ws/events");
+  const WS_URL = "wss://sentinel-soc-api-qpzg.onrender.com/ws/events";
 
-      ws.onopen = () => {
-        console.log("✅ WebSocket connected");
-        setConnected(true);
-      };
+  ws = new WebSocket(WS_URL);
 
-      ws.onmessage = (e) => {
-        try {
-          const event: Event = JSON.parse(e.data);
+  ws.onopen = () => {
+    console.log("✅ WebSocket connected");
+    setConnected(true);
+  };
 
-          console.log("📡 Event received:", event);
+  ws.onmessage = (e) => {
+    try {
+      const event: Event = JSON.parse(e.data);
 
-          setEvents((prev) => [event, ...prev].slice(0, 20));
-        } catch (error) {
-          console.error("❌ Invalid WebSocket message:", error);
-        }
-      };
+      console.log("📡 Event received:", event);
 
-      ws.onerror = (error) => {
-        console.error("❌ WebSocket error:", error);
-      };
+      setEvents((prev) => [event, ...prev].slice(0, 20));
+    } catch (error) {
+      console.error("❌ Invalid WebSocket message:", error);
+    }
+  };
 
-      ws.onclose = () => {
-        console.log("🔌 WebSocket disconnected");
-        setConnected(false);
+  ws.onerror = (error) => {
+    console.error("❌ WebSocket error:", error);
+  };
 
-        if (!disposed) {
-          reconnectTimer = setTimeout(connect, 2000);
-        }
-      };
-    };
+  ws.onclose = () => {
+    console.log("🔌 WebSocket disconnected");
+    setConnected(false);
 
-    connect();
+    if (!disposed) {
+      reconnectTimer = setTimeout(connect, 2000);
+    }
+  };
+};
 
-    return () => {
-      disposed = true;
+connect();
 
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
+return () => {
+  disposed = true;
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+  }
+
+    if (ws) {
+      ws.onclose = null;
+      ws.onerror = null;
+
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        ws.close();
       }
+    }
+  };
+}, []);
 
-      if (ws) {
-        ws.onclose = null;
-        ws.onerror = null;
-
-        if (
-          ws.readyState === WebSocket.OPEN ||
-          ws.readyState === WebSocket.CONNECTING
-        ) {
-          ws.close();
-        }
-      }
-    };
-  }, []);
-
-  const critical = events.filter(
+const critical = events.filter(
     (event) => event.severity === "CRITICAL"
   ).length;
 
