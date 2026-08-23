@@ -189,10 +189,11 @@ async def fetch_kev_catalog(
     search: Optional[str] = None,
     ransomware_only: bool = False,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    force: bool = False
 ) -> Dict[str, Any]:
     """Fetch paginated, searchable, filtered KEV catalog."""
-    cache = await refresh_kev_cache()
+    cache = await refresh_kev_cache(force=force)
     items = cache["data"]
 
     if search:
