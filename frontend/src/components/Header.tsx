@@ -7,6 +7,7 @@ interface HeaderProps {
   latencyMs: number | null;
   onTriggerScenario: (scenarioId: string) => void;
   onRefreshData?: () => void;
+  onReconnect?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -14,6 +15,7 @@ export const Header: React.FC<HeaderProps> = ({
   latencyMs,
   onTriggerScenario,
   onRefreshData,
+  onReconnect,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -99,7 +101,14 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         {/* WebSocket Live Status */}
-        <div className={`ws-badge ${getStatusColor()}`}>
+        <div
+          className={`ws-badge ${getStatusColor()} ${wsStatus === "OFFLINE" ? "cursor-pointer hover:brightness-110" : ""}`}
+          onClick={wsStatus === "OFFLINE" ? onReconnect : undefined}
+          title={wsStatus === "OFFLINE" ? "WebSocket Offline — Click to reconnect" : `WebSocket status: ${wsStatus}`}
+          role={wsStatus === "OFFLINE" ? "button" : undefined}
+          tabIndex={wsStatus === "OFFLINE" ? 0 : undefined}
+          onKeyDown={wsStatus === "OFFLINE" ? (e) => { if (e.key === "Enter" || e.key === " ") onReconnect?.(); } : undefined}
+        >
           <Radio className={`w-3.5 h-3.5 ${wsStatus === "ONLINE" ? "animate-pulse" : ""}`} />
           <span className="font-bold tracking-wider">{wsStatus}</span>
           {latencyMs !== null && wsStatus === "ONLINE" && (

@@ -2,15 +2,21 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { SecurityEvent, Incident, WebSocketStatus } from "../types";
 import { getWebSocketUrl } from "../services/api";
 
+const MAX_RECONNECT_ATTEMPTS = 5;
+const INITIAL_BACKOFF_MS = 1000;
+const MAX_BACKOFF_MS = 16000;
+
 interface UseSentinelWebSocketReturn {
   status: WebSocketStatus;
   events: SecurityEvent[];
   incidents: Incident[];
   latencyMs: number | null;
   reconnectCount: number;
+  maxReconnectAttempts: number;
   triggerScenario: (scenarioId: string) => void;
   setIncidents: React.Dispatch<React.SetStateAction<Incident[]>>;
   clearEvents: () => void;
+  reconnect: () => void;
 }
 
 export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
@@ -25,10 +31,49 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pingTimestampRef = useRef<number | null>(null);
   const disposedRef = useRef<boolean>(false);
-  const backoffDelayRef = useRef<number>(1000);
+  const backoffDelayRef = useRef<number>(INITIAL_BACKOFF_MS);
+  const reconnectAttemptsRef = useRef<number>(0);
+
+  const cleanupSocket = useCallback(() => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.onopen = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onclose = null;
+      if (
+        wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current.readyState === WebSocket.CONNECTING
+      ) {
+        wsRef.current.close();
+      }
+      wsRef.current = null;
+    }
+  }, []);
+
+  const sendPing = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      pingTimestampRef.current = performance.now();
+      try {
+        wsRef.current.send(JSON.stringify({ type: "PING" }));
+      } catch {
+        // Ignore send errors during socket transitions
+      }
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (disposedRef.current) return;
+
+    // Clean up any existing connection to prevent duplicates
+    cleanupSocket();
 
     const wsUrl = getWebSocketUrl();
     setStatus((prev) => (prev === "ONLINE" ? "RECONNECTING" : prev));
@@ -44,15 +89,16 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
         }
         setStatus("ONLINE");
         setReconnectCount(0);
-        backoffDelayRef.current = 1000;
+        reconnectAttemptsRef.current = 0;
+        backoffDelayRef.current = INITIAL_BACKOFF_MS;
 
-        // Start periodic ping for latency measurement and keeping connection alive
+        // Immediately measure latency upon connection
+        sendPing();
+
+        // Start periodic ping for ongoing latency measurement and keepalive
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            pingTimestampRef.current = performance.now();
-            ws.send(JSON.stringify({ type: "PING" }));
-          }
+          sendPing();
         }, 15000);
       };
 
@@ -62,7 +108,10 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
 
           if (data.type === "PONG") {
             if (pingTimestampRef.current) {
-              const latency = Math.round(performance.now() - pingTimestampRef.current);
+              const latency = Math.max(
+                1,
+                Math.round(performance.now() - pingTimestampRef.current)
+              );
               setLatencyMs(latency);
             }
             return;
@@ -73,12 +122,14 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
               setEvents((prev) => {
                 const combined = [...data.recent_events, ...prev];
                 const seen = new Set();
-                return combined.filter((e) => {
-                  const key = e.event_id || e.id;
-                  if (!key || seen.has(key)) return false;
-                  seen.add(key);
-                  return true;
-                }).slice(0, 150);
+                return combined
+                  .filter((e) => {
+                    const key = e.event_id || e.id;
+                    if (!key || seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  })
+                  .slice(0, 150);
               });
             }
             if (Array.isArray(data.active_incidents)) {
@@ -90,7 +141,11 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
           if (data.type === "INCIDENT_UPDATE" && data.incident) {
             setIncidents((prev) => {
               const updated = data.incident;
-              const idx = prev.findIndex((i) => (i.incident_id || i.id) === (updated.incident_id || updated.id));
+              const idx = prev.findIndex(
+                (i) =>
+                  (i.incident_id || i.id) ===
+                  (updated.incident_id || updated.id)
+              );
               if (idx >= 0) {
                 const copy = [...prev];
                 copy[idx] = updated;
@@ -114,7 +169,9 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
             destination_port: data.destination_port || 443,
             protocol: data.protocol || "HTTPS",
             target: data.target || "internal-host",
-            message: data.message || `Simulated ${data.type || data.event_type || "Event"} detected`,
+            message:
+              data.message ||
+              `Simulated ${data.type || data.event_type || "Event"} detected`,
             simulation: data.simulation ?? true,
             source: data.source || "SIMULATION",
             mitre_technique: data.mitre_technique,
@@ -136,11 +193,20 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         if (disposedRef.current) return;
 
+        reconnectAttemptsRef.current += 1;
+        const currentAttempt = reconnectAttemptsRef.current;
+        setReconnectCount(currentAttempt);
+
+        if (currentAttempt > MAX_RECONNECT_ATTEMPTS) {
+          setStatus("OFFLINE");
+          return;
+        }
+
         setStatus("RECONNECTING");
-        setReconnectCount((c) => c + 1);
 
         const delay = backoffDelayRef.current;
-        backoffDelayRef.current = Math.min(delay * 1.5, 10000);
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        backoffDelayRef.current = Math.min(delay * 2, MAX_BACKOFF_MS);
 
         reconnectTimerRef.current = setTimeout(() => {
           connect();
@@ -150,7 +216,15 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
       console.error("[Sentinel WS] Init error:", e);
       setStatus("OFFLINE");
     }
-  }, []);
+  }, [cleanupSocket, sendPing]);
+
+  const reconnect = useCallback(() => {
+    reconnectAttemptsRef.current = 0;
+    setReconnectCount(0);
+    backoffDelayRef.current = INITIAL_BACKOFF_MS;
+    setStatus("CONNECTING");
+    connect();
+  }, [connect]);
 
   useEffect(() => {
     disposedRef.current = false;
@@ -158,22 +232,18 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
 
     return () => {
       disposedRef.current = true;
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.onerror = null;
-        wsRef.current.close();
-      }
+      cleanupSocket();
     };
-  }, [connect]);
+  }, [connect, cleanupSocket]);
 
   const triggerScenario = useCallback((scenarioId: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: "TRIGGER_SCENARIO",
-        scenario_id: scenarioId,
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "TRIGGER_SCENARIO",
+          scenario_id: scenarioId,
+        })
+      );
     }
   }, []);
 
@@ -187,8 +257,10 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
     incidents,
     latencyMs,
     reconnectCount,
+    maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
     triggerScenario,
     setIncidents,
     clearEvents,
+    reconnect,
   };
 }

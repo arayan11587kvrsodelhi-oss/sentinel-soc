@@ -28,6 +28,7 @@ export default function App() {
     triggerScenario,
     setIncidents,
     clearEvents,
+    reconnect,
   } = useSentinelWebSocket();
 
   // Vulnerability Intelligence State
@@ -197,6 +198,7 @@ export default function App() {
         latencyMs={latencyMs}
         onTriggerScenario={triggerScenario}
         onRefreshData={() => loadIntelligence(true)}
+        onReconnect={reconnect}
       />
 
       {/* Hero Mission Statement */}
