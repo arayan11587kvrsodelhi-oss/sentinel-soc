@@ -11,6 +11,7 @@ from app.api.routes.incidents import router as incidents_router
 from app.api.routes.threats import router as threats_router
 from app.api.routes.vulnerabilities import router as vulnerabilities_router
 from app.api.routes.ai import router as ai_router
+from app.api.routes.response import router as response_router
 from app.api.websocket import router as websocket_router, background_simulation_loop, manager
 from app.services.cisa_service import refresh_kev_cache
 from app.services.nvd_service import fetch_recent_cves
@@ -88,6 +89,7 @@ app.include_router(incidents_router, prefix="/api")
 app.include_router(threats_router, prefix="/api")
 app.include_router(vulnerabilities_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
+app.include_router(response_router, prefix="/api")
 app.include_router(websocket_router)
 
 
@@ -105,9 +107,28 @@ async def root():
 
 @app.get("/health")
 async def health():
+    """Real-time system health check for API, Database, AI Engine, and Event Pipeline."""
+    db_status = "OPERATIONAL"
+    try:
+        from app.services.correlation_service import DB_PATH
+        import sqlite3
+        with sqlite3.connect(DB_PATH, timeout=2.0) as conn:
+            conn.execute("SELECT 1").fetchone()
+    except Exception:
+        db_status = "DEGRADED"
+
+    ai_mode = "READY (LLM)" if os.getenv("AI_API_KEY") else "READY (EXPERT_ENGINE)"
+
     return {
         "status": "healthy",
         "service": "SENTINEL SOC API",
-        "active_ws_clients": len(manager.active_connections),
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "subsystems": {
+            "api": "OPERATIONAL",
+            "websocket": "OPERATIONAL" if manager else "DEGRADED",
+            "database": db_status,
+            "ai_engine": ai_mode,
+            "event_pipeline": "ACTIVE"
+        },
+        "active_ws_clients": len(manager.active_connections)
     }

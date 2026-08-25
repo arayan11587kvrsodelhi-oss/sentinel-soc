@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Trash2,
@@ -17,6 +17,20 @@ interface LiveEventStreamProps {
   onClearEvents: () => void;
 }
 
+function getRelativeTime(timestamp?: string): string {
+  if (!timestamp) return "Awaiting events";
+  const now = Date.now();
+  const time = new Date(timestamp).getTime();
+  if (isNaN(time)) return "Just now";
+  const diffSec = Math.max(0, Math.floor((now - time) / 1000));
+  if (diffSec < 2) return "Just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  return `${diffHours}h ago`;
+}
+
 export const LiveEventStream: React.FC<LiveEventStreamProps> = ({
   events,
   selectedEventId,
@@ -26,6 +40,19 @@ export const LiveEventStream: React.FC<LiveEventStreamProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [severityFilter, setSeverityFilter] = useState<string>("ALL");
+  const [ticker, setTicker] = useState(0);
+
+  // Periodic ticker so relative time counter updates continuously
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTicker((prev) => (prev + 1) % 1000);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const lastEventRelative = useMemo(() => {
+    return getRelativeTime(events[0]?.timestamp);
+  }, [events, ticker]);
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
@@ -87,7 +114,17 @@ export const LiveEventStream: React.FC<LiveEventStreamProps> = ({
           <span className="pill-sim">SIMULATION</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {events.length > 0 && (
+            <span
+              className="text-xs text-emerald-400/90 font-mono flex items-center gap-1.5"
+              title="Time since most recent event was received"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Last event: {lastEventRelative}
+            </span>
+          )}
+
           <span className="text-xs text-slate-400">
             Showing {filteredEvents.length} of {events.length}
           </span>
@@ -152,10 +189,11 @@ export const LiveEventStream: React.FC<LiveEventStreamProps> = ({
           </div>
         ) : (
           /* Event Rows */
-          filteredEvents.map((event) => {
+          filteredEvents.map((event, index) => {
             const eventId = event.event_id || event.id || "";
 
             const isSelected = selectedEventId === eventId;
+            const isNewest = index === 0;
 
             const severity =
               String(event.severity || "MEDIUM").toUpperCase();
@@ -164,6 +202,8 @@ export const LiveEventStream: React.FC<LiveEventStreamProps> = ({
               <div
                 key={eventId}
                 className={`event-row ${
+                  isNewest ? "new-event" : ""
+                } ${
                   isSelected ? "selected" : ""
                 } event-${severity.toLowerCase()}`}
                 onClick={() => onSelectEvent(event)}

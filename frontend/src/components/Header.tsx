@@ -20,11 +20,26 @@ export const Header: React.FC<HeaderProps> = ({
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const scenarios = [
-    { id: "scenario_credential_brute_force", name: "Credential Brute Force Chain", tag: "T1110" },
-    { id: "scenario_web_cve_exploitation", name: "Web Application Exploit (CVE-2023-34362)", tag: "T1190" },
-    { id: "scenario_ransomware_execution", name: "Ransomware & Lateral Movement", tag: "T1486" },
-    { id: "scenario_data_exfiltration", name: "Database Exfiltration Spike", tag: "T1041" },
+    { id: "scenario_credential_brute_force", name: "Password Spray & Brute Force Chain", tag: "T1110" },
+    { id: "scenario_web_cve_exploitation", name: "Web Exploit & Web Shell (CVE-2023-34362)", tag: "T1190" },
+    { id: "scenario_reconnaissance_port_scan", name: "Network Reconnaissance & Service Discovery", tag: "T1046" },
+    { id: "scenario_powershell_privilege_escalation", name: "PowerShell Injection & Privilege Escalation", tag: "T1059.001" },
+    { id: "scenario_ransomware_execution", name: "Lateral Movement & Ransomware Deployment", tag: "T1486" },
+    { id: "scenario_data_exfiltration", name: "Database Compromise & Data Exfiltration", tag: "T1041" },
   ];
+
+  const getStatusLabel = () => {
+    switch (wsStatus) {
+      case "ONLINE":
+        return "LIVE";
+      case "CONNECTING":
+      case "RECONNECTING":
+        return "RECONNECTING";
+      case "OFFLINE":
+      default:
+        return "OFFLINE";
+    }
+  };
 
   const getStatusColor = () => {
     switch (wsStatus) {
@@ -104,13 +119,13 @@ export const Header: React.FC<HeaderProps> = ({
         <div
           className={`ws-badge ${getStatusColor()} ${wsStatus === "OFFLINE" ? "cursor-pointer hover:brightness-110" : ""}`}
           onClick={wsStatus === "OFFLINE" ? onReconnect : undefined}
-          title={wsStatus === "OFFLINE" ? "WebSocket Offline — Click to reconnect" : `WebSocket status: ${wsStatus}`}
+          title={wsStatus === "OFFLINE" ? "WebSocket Offline — Click to reconnect" : `WebSocket status: ${getStatusLabel()}`}
           role={wsStatus === "OFFLINE" ? "button" : undefined}
           tabIndex={wsStatus === "OFFLINE" ? 0 : undefined}
           onKeyDown={wsStatus === "OFFLINE" ? (e) => { if (e.key === "Enter" || e.key === " ") onReconnect?.(); } : undefined}
         >
           <Radio className={`w-3.5 h-3.5 ${wsStatus === "ONLINE" ? "animate-pulse" : ""}`} />
-          <span className="font-bold tracking-wider">{wsStatus}</span>
+          <span className="font-bold tracking-wider">{getStatusLabel()}</span>
           {latencyMs !== null && wsStatus === "ONLINE" && (
             <span className="latency-text">{latencyMs}ms</span>
           )}

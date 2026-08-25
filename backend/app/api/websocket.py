@@ -4,6 +4,7 @@ Streams correlated synthetic security events and live incident updates to all co
 """
 import asyncio
 import json
+import random
 import logging
 from typing import Set, Dict, Any, List
 from datetime import datetime, timezone
@@ -97,7 +98,7 @@ async def websocket_events_endpoint(websocket: WebSocket):
                                     "type": "INCIDENT_UPDATE",
                                     "incident": inc.model_dump()
                                 })
-                            await asyncio.sleep(0.3)
+                            await asyncio.sleep(0.7)
 
             except json.JSONDecodeError:
                 pass
@@ -140,5 +141,5 @@ async def background_simulation_loop():
         except Exception as e:
             logger.error(f"Error in background simulation loop: {e}")
 
-        # Sleep between 3.5 to 5.5 seconds for realistic cadence
-        await asyncio.sleep(4.0)
+        # Varied, realistic SOC cadence (5.0s to 10.0s interval)
+        await asyncio.sleep(random.uniform(5.0, 10.0))

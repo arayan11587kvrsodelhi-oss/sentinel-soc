@@ -2557,6 +2557,152 @@ select:focus-visible {
 }
 
 /* =========================================================
+   MITRE ATT&CK MATRIX GRID
+========================================================= */
+
+.mitre-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  max-height: 520px;
+}
+
+.matrix-column {
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 15, 22, 0.75);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px;
+  min-height: 200px;
+}
+
+.matrix-column.column-active {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(12, 20, 30, 0.9);
+}
+
+.matrix-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.matrix-tactic-name {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matrix-tactic-count {
+  font-size: 9px;
+  font-family: monospace;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.matrix-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.matrix-empty-slot {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.matrix-tech-cell {
+  text-align: left;
+  padding: 6px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: #090d13;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.matrix-tech-cell:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  background: #111923;
+}
+
+.matrix-tech-cell.status-observed {
+  border-color: rgba(255, 84, 114, 0.5);
+  background: rgba(255, 84, 114, 0.1);
+  box-shadow: 0 0 10px rgba(255, 84, 114, 0.12);
+}
+
+.matrix-tech-cell.status-simulated {
+  border-color: rgba(247, 181, 72, 0.45);
+  background: rgba(247, 181, 72, 0.08);
+}
+
+.matrix-tech-cell.status-not_observed {
+  opacity: 0.65;
+}
+
+.matrix-tech-cell .tech-id {
+  font-size: 9px;
+  font-family: monospace;
+  font-weight: 800;
+  color: var(--color-emerald);
+}
+
+.matrix-tech-cell.status-observed .tech-id {
+  color: var(--color-rose);
+}
+
+.matrix-tech-cell.status-simulated .tech-id {
+  color: var(--color-amber);
+}
+
+.matrix-tech-cell .tech-name {
+  font-size: 9px;
+  color: var(--text-main);
+  line-height: 1.25;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.matrix-tech-cell .tech-meta {
+  font-size: 8px;
+  font-family: monospace;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.matrix-tech-cell .tech-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-rose);
+  box-shadow: 0 0 6px var(--color-rose);
+  animation: livePulse 1.5s infinite;
+}
+
+/* =========================================================
    REDUCED MOTION
 ========================================================= */
 

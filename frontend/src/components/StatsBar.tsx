@@ -27,6 +27,32 @@ export const StatsBar: React.FC<StatsBarProps> = ({
     if (!num) return "0";
     return num.toLocaleString();
   };
+
+  const getStatusLabel = () => {
+    switch (wsStatus) {
+      case "ONLINE":
+        return "LIVE";
+      case "CONNECTING":
+      case "RECONNECTING":
+        return "RECONNECTING";
+      case "OFFLINE":
+      default:
+        return "OFFLINE";
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (wsStatus) {
+      case "ONLINE":
+        return "text-emerald-400";
+      case "CONNECTING":
+      case "RECONNECTING":
+        return "text-amber-400";
+      case "OFFLINE":
+      default:
+        return "text-rose-400";
+    }
+  };
   return (
     <section className="stats-grid">
       <div className="stat-card stat-critical">
@@ -90,12 +116,12 @@ export const StatsBar: React.FC<StatsBarProps> = ({
 
       <div className="stat-card stat-ws">
         <div className="stat-icon">
-          <Wifi className={`w-5 h-5 ${wsStatus === "ONLINE" ? "text-emerald-400" : "text-slate-400"}`} />
+          <Wifi className={`w-5 h-5 ${getStatusColor()}`} />
         </div>
         <div className="stat-body">
           <span className="stat-label">WEBSOCKET BUS</span>
-          <strong className={`stat-value ${wsStatus === "ONLINE" ? "text-emerald-400" : "text-slate-400"}`}>
-            {wsStatus}
+          <strong className={`stat-value ${getStatusColor()}`}>
+            {getStatusLabel()}
           </strong>
           <span className="stat-subtext">Telemetry Stream</span>
         </div>

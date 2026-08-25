@@ -8,6 +8,7 @@ import { VulnerabilityExplorer } from "./components/VulnerabilityExplorer";
 import { EventDetailDrawer } from "./components/EventDetailDrawer";
 import { IncidentDetailDrawer } from "./components/IncidentDetailDrawer";
 import { VulnerabilityModal } from "./components/VulnerabilityModal";
+import { MitreMatrix } from "./components/MitreMatrix";
 
 import { useSentinelWebSocket } from "./hooks/useSentinelWebSocket";
 import { api } from "./services/api";
@@ -17,6 +18,7 @@ import {
   IncidentStatus,
   Vulnerability,
   AiAnalysisResult,
+  MitreMatrixItem,
 } from "./types";
 
 export default function App() {
@@ -49,6 +51,11 @@ export default function App() {
     event?: SecurityEvent | null;
     incident?: Incident | null;
   }>({ type: null });
+
+  // View Switcher State
+  const [activeView, setActiveView] = useState<"DASHBOARD" | "MATRIX">("DASHBOARD");
+  const [mitreMatrix, setMitreMatrix] = useState<MitreMatrixItem[]>([]);
+  const [matrixLoading, setMatrixLoading] = useState<boolean>(false);
 
   // Detail Panels / Modals State
   const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
@@ -96,10 +103,25 @@ export default function App() {
     }
   }, [setIncidents]);
 
+  const loadMitreMatrix = useCallback(async () => {
+    setMatrixLoading(true);
+    try {
+      const data = await api.getMitreAttackMatrix();
+      if (Array.isArray(data)) {
+        setMitreMatrix(data);
+      }
+    } catch (err) {
+      console.warn("Failed to load MITRE matrix:", err);
+    } finally {
+      setMatrixLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadIntelligence();
     loadIncidents();
-  }, [loadIntelligence, loadIncidents]);
+    loadMitreMatrix();
+  }, [loadIntelligence, loadIncidents, loadMitreMatrix]);
 
   // AI Triage Handlers
   const handleAnalyzeEvent = async (event: SecurityEvent) => {
@@ -226,45 +248,79 @@ export default function App() {
         kevDataSource={kevDataSource}
       />
 
-      {/* Primary SOC Workspace Grid: Stream + Incidents */}
-      <section className="layout-grid">
-        <LiveEventStream
-          events={events}
-          selectedEventId={selectedEvent?.event_id || selectedEvent?.id}
-          onSelectEvent={(ev) => setSelectedEvent(ev)}
-          onAnalyzeEvent={(ev) => handleAnalyzeEvent(ev)}
-          onClearEvents={clearEvents}
-        />
+      {/* Workspace View Switcher Tabs */}
+      <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            className={`tab-btn ${activeView === "DASHBOARD" ? "active" : ""}`}
+            onClick={() => setActiveView("DASHBOARD")}
+          >
+            SOC Operations Workspace
+          </button>
+          <button
+            className={`tab-btn ${activeView === "MATRIX" ? "active" : ""}`}
+            onClick={() => {
+              setActiveView("MATRIX");
+              loadMitreMatrix();
+            }}
+          >
+            MITRE ATT&CK Matrix Navigator
+          </button>
+        </div>
 
-        <IncidentList
-          incidents={incidents}
-          selectedIncidentId={selectedIncident?.incident_id || selectedIncident?.id}
-          onSelectIncident={(inc) => setSelectedIncident(inc)}
-          onAiTriageIncident={(inc) => handleAiTriageIncident(inc)}
-          onUpdateStatus={handleUpdateIncidentStatus}
-        />
-      </section>
+        <span className="text-xs text-slate-400 font-mono hidden md:inline-block">
+          {activeView === "DASHBOARD" ? "LIVE STREAM & CORRELATED INCIDENTS" : "ENTERPRISE COVERAGE MATRIX"}
+        </span>
+      </div>
 
-      {/* Secondary Workspace Grid: Sentinel AI + Vulnerabilities */}
-      <section className="layout-grid">
-        <AiAnalystPanel
-          analysis={aiAnalysis}
-          loading={aiLoading}
-          selectedContext={aiContext}
-          onRunLiveTriage={handleRunLiveTriage}
-        />
+      {/* Main Content Area Based on Active View */}
+      {activeView === "DASHBOARD" ? (
+        <>
+          {/* Primary SOC Workspace Grid: Stream + Incidents */}
+          <section className="layout-grid">
+            <LiveEventStream
+              events={events}
+              selectedEventId={selectedEvent?.event_id || selectedEvent?.id}
+              onSelectEvent={(ev) => setSelectedEvent(ev)}
+              onAnalyzeEvent={(ev) => handleAnalyzeEvent(ev)}
+              onClearEvents={clearEvents}
+            />
 
-        <VulnerabilityExplorer
-          vulnerabilities={vulnerabilities}
-          loading={vulnLoading}
-          totalCount={vulnTotal}
-          lastUpdated={vulnLastUpdated}
-          isCached={vulnCached}
-          dataSource={vulnDataSource}
-          onSelectVulnerability={(vuln) => setSelectedVuln(vuln)}
-          onForceRefresh={() => loadIntelligence(true)}
-        />
-      </section>
+            <IncidentList
+              incidents={incidents}
+              selectedIncidentId={selectedIncident?.incident_id || selectedIncident?.id}
+              onSelectIncident={(inc) => setSelectedIncident(inc)}
+              onAiTriageIncident={(inc) => handleAiTriageIncident(inc)}
+              onUpdateStatus={handleUpdateIncidentStatus}
+            />
+          </section>
+
+          {/* Secondary Workspace Grid: Sentinel AI + Vulnerabilities */}
+          <section className="layout-grid">
+            <AiAnalystPanel
+              analysis={aiAnalysis}
+              loading={aiLoading}
+              selectedContext={aiContext}
+              onRunLiveTriage={handleRunLiveTriage}
+            />
+
+            <VulnerabilityExplorer
+              vulnerabilities={vulnerabilities}
+              loading={vulnLoading}
+              totalCount={vulnTotal}
+              lastUpdated={vulnLastUpdated}
+              isCached={vulnCached}
+              dataSource={vulnDataSource}
+              onSelectVulnerability={(vuln) => setSelectedVuln(vuln)}
+              onForceRefresh={() => loadIntelligence(true)}
+            />
+          </section>
+        </>
+      ) : (
+        <section className="mb-6">
+          <MitreMatrix matrixData={mitreMatrix} loading={matrixLoading} />
+        </section>
+      )}
 
       {/* Forensic Detail Drawers & Modals */}
       <EventDetailDrawer

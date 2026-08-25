@@ -51,6 +51,11 @@ class Incident(BaseModel):
     category: str
     source_ip: str
     target: str
+    source_ips: List[str] = Field(default_factory=list)
+    affected_targets: List[str] = Field(default_factory=list)
+    attack_stage: Optional[str] = "Initial Access"
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
     event_ids: List[str] = Field(default_factory=list)
     events_count: int = 0
     techniques: List[MitreTechnique] = Field(default_factory=list)
@@ -64,6 +69,18 @@ class Incident(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         if not self.id:
             self.id = self.incident_id
+        if not self.source_ips:
+            self.source_ips = [self.source_ip] if self.source_ip else []
+        elif self.source_ip and self.source_ip not in self.source_ips:
+            self.source_ips.append(self.source_ip)
+        if not self.affected_targets:
+            self.affected_targets = [self.target] if self.target else []
+        elif self.target and self.target not in self.affected_targets:
+            self.affected_targets.append(self.target)
+        if not self.first_seen:
+            self.first_seen = self.created_at
+        if not self.last_seen:
+            self.last_seen = self.updated_at
 
 
 class KevDetails(BaseModel):
@@ -115,21 +132,54 @@ class AnalysisRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
+class EvidenceBreakdown(BaseModel):
+    observed: List[str] = Field(default_factory=list)
+    inferred: List[str] = Field(default_factory=list)
+    recommended: List[str] = Field(default_factory=list)
+    unknown: List[str] = Field(default_factory=list)
+
+
 class AnalysisResponse(BaseModel):
     risk_score: int
     risk_level: str
     classification: str
     confidence: float
     summary: str
+    threat_summary: Optional[str] = None
+    why_it_matters: Optional[str] = None
+    attack_progression: List[str] = Field(default_factory=list)
+    likely_objective: Optional[str] = None
+    mitre_technique: Optional[MitreTechnique] = None
+    mitre_techniques: List[MitreTechnique] = Field(default_factory=list)
+    affected_assets: List[str] = Field(default_factory=list)
     observed_facts: List[str] = Field(default_factory=list)
     ai_inference: List[str] = Field(default_factory=list)
-    mitre_technique: Optional[MitreTechnique] = None
-    affected_assets: List[str] = Field(default_factory=list)
+    unknown_factors: List[str] = Field(default_factory=list)
+    evidence: Optional[EvidenceBreakdown] = None
     immediate_response: List[str] = Field(default_factory=list)
     investigation_steps: List[str] = Field(default_factory=list)
     long_term_hardening: List[str] = Field(default_factory=list)
+    playbook_recommendations: List[str] = Field(default_factory=list)
+    incident_id: Optional[str] = None
+    evidence_count: int = 0
+    model: str = "Sentinel AI Expert Defensive Engine"
     source: str = "Sentinel AI Defensive Engine"
     generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.threat_summary:
+            self.threat_summary = self.summary
+        if not self.mitre_techniques and self.mitre_technique:
+            self.mitre_techniques = [self.mitre_technique]
+        if not self.evidence:
+            self.evidence = EvidenceBreakdown(
+                observed=self.observed_facts,
+                inferred=self.ai_inference,
+                recommended=self.immediate_response,
+                unknown=self.unknown_factors
+            )
+        if not self.evidence_count:
+            self.evidence_count = len(self.observed_facts) + len(self.ai_inference)
 
 
 class IncidentStatusUpdate(BaseModel):

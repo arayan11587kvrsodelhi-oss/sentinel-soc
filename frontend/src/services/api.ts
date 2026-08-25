@@ -6,6 +6,9 @@ import {
   AiAnalysisResult,
   DashboardMetrics,
   SecurityEvent,
+  SimulatedActionRequest,
+  SimulatedActionRecord,
+  MitreMatrixItem,
 } from "../types";
 
 /**
@@ -408,6 +411,42 @@ export const api = {
     const res = await fetch(url);
 
     return handleResponse<SecurityEvent[]>(res);
+  },
+
+  /**
+   * -------------------------------------------------------
+   * SIMULATED RESPONSE & PLAYBOOKS
+   * -------------------------------------------------------
+   */
+
+  async simulateResponseAction(
+    payload: SimulatedActionRequest
+  ): Promise<SimulatedActionRecord> {
+    const res = await fetch(`${API_BASE}/api/response/simulate-action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return handleResponse<SimulatedActionRecord>(res);
+  },
+
+  async getResponseAuditLog(limit = 50): Promise<SimulatedActionRecord[]> {
+    const res = await fetch(`${API_BASE}/api/response/audit-log?limit=${limit}`);
+    return handleResponse<SimulatedActionRecord[]>(res);
+  },
+
+  /**
+   * -------------------------------------------------------
+   * MITRE ATT&CK MATRIX
+   * -------------------------------------------------------
+   */
+
+  async getMitreAttackMatrix(): Promise<MitreMatrixItem[]> {
+    const res = await fetch(`${API_BASE}/api/mitre/matrix`);
+    return handleResponse<MitreMatrixItem[]>(res);
   },
 };
 

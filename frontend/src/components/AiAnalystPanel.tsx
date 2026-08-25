@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Brain,
   ShieldCheck,
@@ -9,8 +9,15 @@ import {
   ExternalLink,
   Zap,
   Info,
+  HelpCircle,
+  Crosshair,
+  ShieldAlert,
+  Terminal,
+  Activity,
+  CheckCircle2,
 } from "lucide-react";
-import { AiAnalysisResult, Incident, SecurityEvent } from "../types";
+import { AiAnalysisResult, Incident, SecurityEvent, SimulatedActionRecord } from "../types";
+import { api } from "../services/api";
 
 interface AiAnalystPanelProps {
   analysis: AiAnalysisResult | null;
@@ -29,6 +36,35 @@ export const AiAnalystPanel: React.FC<AiAnalystPanelProps> = ({
   selectedContext,
   onRunLiveTriage,
 }) => {
+  const [executingAction, setExecutingAction] = useState<string | null>(null);
+  const [lastActionRecord, setLastActionRecord] = useState<SimulatedActionRecord | null>(null);
+
+  const handleSimulateAction = async (actionType: string) => {
+    const target =
+      selectedContext.incident?.source_ip ||
+      selectedContext.incident?.target ||
+      selectedContext.event?.source_ip ||
+      selectedContext.event?.target ||
+      "192.168.1.105";
+
+    const incidentId = selectedContext.incident?.incident_id || selectedContext.incident?.id;
+
+    setExecutingAction(actionType);
+    try {
+      const record = await api.simulateResponseAction({
+        action_type: actionType,
+        target,
+        incident_id: incidentId,
+        reason: `AI Copilot recommended containment for ${selectedContext.incident?.title || "active anomaly"}`,
+      });
+      setLastActionRecord(record);
+    } catch (err) {
+      console.error("Failed to execute simulated action:", err);
+    } finally {
+      setExecutingAction(null);
+    }
+  };
+
   const getRiskColor = (score: number, level: string) => {
     if (score >= 90 || level === "CRITICAL") return "text-rose-400 border-rose-500/40 bg-rose-950/20";
     if (score >= 70 || level === "HIGH") return "text-amber-400 border-amber-500/40 bg-amber-950/20";
@@ -118,46 +154,161 @@ export const AiAnalystPanel: React.FC<AiAnalystPanelProps> = ({
               </div>
             </div>
 
-            {/* Summary */}
+            {/* Summary & Impact */}
             <div className="ai-section">
               <h4 className="section-title">
                 <Info className="w-3.5 h-3.5 text-emerald-400" />
-                EXECUTIVE DEFENSIVE SUMMARY
+                THREAT SUMMARY & IMPACT
               </h4>
-              <p className="summary-text">{analysis.summary}</p>
+              <p className="summary-text">{analysis.threat_summary || analysis.summary}</p>
+              {analysis.why_it_matters && (
+                <div className="mt-2 text-xs text-slate-300 bg-slate-900/60 p-2.5 rounded border border-slate-800">
+                  <strong className="text-cyan-400 block mb-0.5">Why It Matters:</strong>
+                  <span>{analysis.why_it_matters}</span>
+                </div>
+              )}
             </div>
 
-            {/* Facts vs Inference */}
-            <div className="facts-inference-grid">
-              <div className="facts-card">
-                <h5 className="sub-title text-cyan-400">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  OBSERVED FACTS (GROUND TRUTH)
-                </h5>
-                <ul>
-                  {analysis.observed_facts?.map((fact, idx) => (
-                    <li key={idx} className="fact-item">
-                      <span className="bullet">✓</span>
-                      <span>{fact}</span>
-                    </li>
+            {/* Attack Progression & Likely Objective */}
+            {analysis.attack_progression && analysis.attack_progression.length > 0 && (
+              <div className="ai-section">
+                <h4 className="section-title text-cyan-400">
+                  <Crosshair className="w-3.5 h-3.5" />
+                  ATTACK PROGRESSION & LIKELY OBJECTIVE
+                </h4>
+                {analysis.likely_objective && (
+                  <div className="text-xs text-amber-300 font-mono mb-2 bg-amber-950/20 p-2 rounded border border-amber-800/40">
+                    <strong>Adversary Objective:</strong> {analysis.likely_objective}
+                  </div>
+                )}
+                <div className="space-y-1 font-mono text-xs text-slate-300">
+                  {analysis.attack_progression.map((step, idx) => (
+                    <div key={idx} className="bg-slate-900/40 p-1.5 rounded border border-slate-800 flex items-center gap-2">
+                      <span className="text-emerald-400 font-bold">›</span>
+                      <span>{step}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Structured Evidence: Observed vs Inferred vs Unknown */}
+            <div className="ai-section">
+              <h4 className="section-title text-slate-200">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                GROUNDED EVIDENCE CONTRACT
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                {/* Observed Facts */}
+                <div className="facts-card">
+                  <h5 className="sub-title text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    OBSERVED (FACTS)
+                  </h5>
+                  <ul className="text-xs space-y-1 mt-1 text-slate-300">
+                    {(analysis.evidence?.observed || analysis.observed_facts)?.map((fact, idx) => (
+                      <li key={idx} className="fact-item">
+                        <span className="bullet text-emerald-400">✓</span>
+                        <span>{fact}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* AI Inferences */}
+                <div className="inference-card">
+                  <h5 className="sub-title text-amber-400 flex items-center gap-1">
+                    <Zap className="w-3 h-3" />
+                    INFERRED (PROBABILISTIC)
+                  </h5>
+                  <ul className="text-xs space-y-1 mt-1 text-slate-300">
+                    {(analysis.evidence?.inferred || analysis.ai_inference)?.map((inf, idx) => (
+                      <li key={idx} className="inference-item">
+                        <span className="bullet text-amber-400">⚡</span>
+                        <span>{inf}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Unknown Factors */}
+                <div className="bg-slate-900/40 p-2.5 rounded border border-slate-800">
+                  <h5 className="sub-title text-slate-400 flex items-center gap-1">
+                    <HelpCircle className="w-3 h-3" />
+                    UNKNOWN (BLIND SPOTS)
+                  </h5>
+                  <ul className="text-xs space-y-1 mt-1 text-slate-400">
+                    {(analysis.evidence?.unknown || analysis.unknown_factors || [
+                      "External actor geography and ASN attribution.",
+                      "Whether credentials were leaked on public paste sites."
+                    ])?.map((unk, idx) => (
+                      <li key={idx} className="flex items-start gap-1">
+                        <span className="text-slate-500">?</span>
+                        <span>{unk}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Automated Simulated Response Actions */}
+            <div className="ai-section bg-rose-950/10 p-3 rounded-lg border border-rose-900/30">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="section-title text-rose-400 m-0">
+                  <Terminal className="w-3.5 h-3.5" />
+                  SIMULATED AUTOMATED RESPONSE PLAYBOOK
+                </h4>
+                <span className="pill-sim">SIMULATION ONLY</span>
+              </div>
+              <p className="text-xs text-slate-400 mb-3">
+                Execute safe, auditable containment procedures for this incident. Zero modifications are made to real infrastructure.
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <button
+                  className="btn btn-secondary text-xs font-mono py-1.5 px-2 bg-rose-950/30 hover:bg-rose-900/40 border-rose-800/50 text-rose-300 flex items-center justify-center gap-1"
+                  onClick={() => handleSimulateAction("IP_BAN")}
+                  disabled={executingAction !== null}
+                >
+                  <span>{executingAction === "IP_BAN" ? "Executing..." : "[ SIMULATE IP BAN ]"}</span>
+                </button>
+
+                <button
+                  className="btn btn-secondary text-xs font-mono py-1.5 px-2 bg-amber-950/30 hover:bg-amber-900/40 border-amber-800/50 text-amber-300 flex items-center justify-center gap-1"
+                  onClick={() => handleSimulateAction("FIREWALL_BLOCK")}
+                  disabled={executingAction !== null}
+                >
+                  <span>{executingAction === "FIREWALL_BLOCK" ? "Executing..." : "[ SIMULATE FIREWALL BLOCK ]"}</span>
+                </button>
+
+                <button
+                  className="btn btn-secondary text-xs font-mono py-1.5 px-2 bg-cyan-950/30 hover:bg-cyan-900/40 border-cyan-800/50 text-cyan-300 flex items-center justify-center gap-1"
+                  onClick={() => handleSimulateAction("CREDENTIAL_REVOCATION")}
+                  disabled={executingAction !== null}
+                >
+                  <span>{executingAction === "CREDENTIAL_REVOCATION" ? "Executing..." : "[ SIMULATE CREDENTIAL REVOCATION ]"}</span>
+                </button>
+
+                <button
+                  className="btn btn-secondary text-xs font-mono py-1.5 px-2 bg-purple-950/30 hover:bg-purple-900/40 border-purple-800/50 text-purple-300 flex items-center justify-center gap-1"
+                  onClick={() => handleSimulateAction("HOST_ISOLATION")}
+                  disabled={executingAction !== null}
+                >
+                  <span>{executingAction === "HOST_ISOLATION" ? "Executing..." : "[ SIMULATE HOST ISOLATION ]"}</span>
+                </button>
               </div>
 
-              <div className="inference-card">
-                <h5 className="sub-title text-amber-400">
-                  <Zap className="w-3.5 h-3.5" />
-                  AI INFERENCE (PROBABILISTIC)
-                </h5>
-                <ul>
-                  {analysis.ai_inference?.map((inf, idx) => (
-                    <li key={idx} className="inference-item">
-                      <span className="bullet">⚡</span>
-                      <span>{inf}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {/* Execution Feedback */}
+              {lastActionRecord && (
+                <div className="mt-3 bg-emerald-950/30 border border-emerald-500/40 p-2.5 rounded text-xs">
+                  <div className="flex items-center justify-between text-emerald-400 font-mono font-bold mb-1">
+                    <span>{lastActionRecord.action_label} · {lastActionRecord.status}</span>
+                    <span className="text-[10px] text-slate-400">{new Date(lastActionRecord.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="text-slate-300 m-0">{lastActionRecord.details}</p>
+                </div>
+              )}
             </div>
 
             {/* MITRE Technique */}
@@ -235,6 +386,13 @@ export const AiAnalystPanel: React.FC<AiAnalystPanelProps> = ({
                   <li key={idx}>{step}</li>
                 ))}
               </ul>
+            </div>
+            {/* Auditability Footer */}
+            <div className="ai-section mt-4 pt-3 border-t border-slate-800 text-[11px] font-mono text-slate-400 flex flex-wrap items-center justify-between gap-2">
+              <span>Engine: <strong>{analysis.model || analysis.source}</strong></span>
+              <span>Generated At: <strong>{analysis.generated_at ? new Date(analysis.generated_at).toLocaleTimeString() : "Just now"}</strong></span>
+              <span>Evidence Items: <strong>{analysis.evidence_count || (analysis.observed_facts?.length + analysis.ai_inference?.length) || 4}</strong></span>
+              {analysis.incident_id && <span>Target Incident: <strong>{analysis.incident_id}</strong></span>}
             </div>
           </div>
         )}

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { ShieldAlert, Brain, ChevronRight, Layers, ArrowRight, CheckCircle2 } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { ShieldAlert, Brain, ChevronRight, Layers, ArrowRight, CheckCircle2, Search, Crosshair, Clock } from "lucide-react";
 import { Incident, IncidentStatus } from "../types";
 
 interface IncidentListProps {
@@ -18,11 +18,40 @@ export const IncidentList: React.FC<IncidentListProps> = ({
   onUpdateStatus,
 }) => {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
-  const filtered = incidents.filter((inc) => {
-    if (statusFilter === "ALL") return true;
-    return inc.status.toUpperCase() === statusFilter.toUpperCase();
-  });
+  const filtered = useMemo(() => {
+    return incidents.filter((inc) => {
+      const matchesStatus =
+        statusFilter === "ALL" ||
+        inc.status.toUpperCase() === statusFilter.toUpperCase();
+
+      if (!matchesStatus) return false;
+
+      if (!searchTerm.trim()) return true;
+
+      const s = searchTerm.toLowerCase();
+      const incId = (inc.incident_id || inc.id || "").toLowerCase();
+      const title = (inc.title || "").toLowerCase();
+      const summary = (inc.summary || "").toLowerCase();
+      const src = (inc.source_ip || "").toLowerCase();
+      const tgt = (inc.target || "").toLowerCase();
+      const stage = (inc.attack_stage || "").toLowerCase();
+      const tech = (inc.techniques || []).some(
+        (t) => t.id.toLowerCase().includes(s) || t.name.toLowerCase().includes(s)
+      );
+
+      return (
+        incId.includes(s) ||
+        title.includes(s) ||
+        summary.includes(s) ||
+        src.includes(s) ||
+        tgt.includes(s) ||
+        stage.includes(s) ||
+        tech
+      );
+    });
+  }, [incidents, statusFilter, searchTerm]);
 
   const getStatusBadge = (status: IncidentStatus) => {
     switch (status) {
@@ -63,17 +92,30 @@ export const IncidentList: React.FC<IncidentListProps> = ({
         </span>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="incident-tabs">
-        {["ALL", "OPEN", "INVESTIGATING", "CONTAINED", "RESOLVED"].map((st) => (
-          <button
-            key={st}
-            className={`tab-btn ${statusFilter === st ? "active" : ""}`}
-            onClick={() => setStatusFilter(st)}
-          >
-            {st}
-          </button>
-        ))}
+      {/* Filter Tabs & Search */}
+      <div className="incident-tabs flex flex-wrap gap-1 items-center justify-between">
+        <div className="flex gap-1 flex-wrap">
+          {["ALL", "OPEN", "INVESTIGATING", "CONTAINED", "RESOLVED"].map((st) => (
+            <button
+              key={st}
+              className={`tab-btn ${statusFilter === st ? "active" : ""}`}
+              onClick={() => setStatusFilter(st)}
+            >
+              {st}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="search-box my-2">
+        <Search className="w-3.5 h-3.5 text-slate-400 search-icon" />
+        <input
+          type="text"
+          placeholder="Filter incidents by title, IP, target, technique..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="search-input"
+        />
       </div>
 
       {/* Incidents List */}
@@ -124,8 +166,17 @@ export const IncidentList: React.FC<IncidentListProps> = ({
                   </div>
                 </div>
 
-                <h3 className="incident-title">{inc.title}</h3>
-                <p className="incident-summary">{inc.summary}</p>
+                  <h3 className="incident-title">{inc.title}</h3>
+
+                  {/* Attack Stage Indicator */}
+                  {inc.attack_stage && (
+                    <div className="flex items-center gap-1.5 my-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-950/30 border border-cyan-800/40 px-2 py-0.5 rounded w-fit">
+                      <Crosshair className="w-3 h-3 text-cyan-400" />
+                      <span>Stage: {inc.attack_stage}</span>
+                    </div>
+                  )}
+
+                  <p className="incident-summary">{inc.summary}</p>
 
                 {/* Confidence Bar */}
                 <div className="confidence-row">

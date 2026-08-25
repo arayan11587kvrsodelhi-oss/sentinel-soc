@@ -42,6 +42,11 @@ export interface Incident {
   category: string;
   source_ip: string;
   target: string;
+  source_ips?: string[];
+  affected_targets?: string[];
+  attack_stage?: string;
+  first_seen?: string;
+  last_seen?: string;
   event_ids: string[];
   events_count: number;
   techniques: MitreTechnique[];
@@ -105,21 +110,73 @@ export interface KevResponse {
   }>;
 }
 
+export interface EvidenceBreakdown {
+  observed: string[];
+  inferred: string[];
+  recommended: string[];
+  unknown: string[];
+}
+
 export interface AiAnalysisResult {
   risk_score: number;
   risk_level: Severity;
   classification: string;
   confidence: number;
   summary: string;
+  threat_summary?: string;
+  why_it_matters?: string;
+  attack_progression?: string[];
+  likely_objective?: string;
   observed_facts: string[];
   ai_inference: string[];
+  unknown_factors?: string[];
+  evidence?: EvidenceBreakdown;
   mitre_technique?: MitreTechnique;
+  mitre_techniques?: MitreTechnique[];
   affected_assets?: string[];
   immediate_response: string[];
   investigation_steps: string[];
   long_term_hardening: string[];
+  playbook_recommendations?: string[];
+  incident_id?: string;
+  evidence_count?: number;
+  model?: string;
   source: string;
   generated_at?: string;
+}
+
+export interface SimulatedActionRecord {
+  action_id: string;
+  action_type: string;
+  action_label: string;
+  target: string;
+  incident_id?: string;
+  timestamp: string;
+  triggered_by: string;
+  reason: string;
+  status: string;
+  details: string;
+  simulation: boolean;
+}
+
+export interface SimulatedActionRequest {
+  action_type: string;
+  target: string;
+  incident_id?: string;
+  reason?: string;
+  triggered_by?: string;
+}
+
+export interface MitreMatrixItem {
+  id: string;
+  name: string;
+  tactic: string;
+  description: string;
+  url?: string;
+  status: "OBSERVED" | "SIMULATED" | "NOT_OBSERVED";
+  incidents_count: number;
+  events_count: number;
+  related_incident_ids: string[];
 }
 
 export interface DashboardMetrics {
