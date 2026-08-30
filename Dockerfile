@@ -1,20 +1,27 @@
 FROM python:3.11-slim
 
-# Render will provide the PORT environment variable.
+EXPOSE 8000
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN python -m pip install --no-cache-dir -r requirements.txt
+# Install backend dependencies
+COPY requirements.txt /app/requirements.txt
+RUN python -m pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy the backend application
-COPY backend ./backend
+# Copy backend
+COPY backend /app/backend
 
-# Render uses the PORT environment variable
-EXPOSE 8000
+# Run from backend directory so "from app..." imports work
+WORKDIR /app/backend
 
-# Start FastAPI from backend/app/main.py
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8000} -k uvicorn.workers.UvicornWorker backend.app.main:app"]
+# Create non-root user
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+# Render provides PORT; fall back to 8000 locally
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8000} -k uvicorn.workers.UvicornWorker app.main:app"]
