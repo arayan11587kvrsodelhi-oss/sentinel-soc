@@ -8,8 +8,11 @@ This package combines the **new Figma Make frontend** with the **older working S
 - Docker/requirements/support files — retained from the older project.
 
 ## Production backend
-API: https://sentinel-soc-api-qpzg.onrender.com
-WebSocket: wss://sentinel-soc-api-qpzg.onrender.com/ws/events
+API:
+https://sentinel-soc-bozv.onrender.com
+
+WebSocket:
+wss://sentinel-soc-bozv.onrender.com/ws/events
 
 The frontend API helper is in `frontend/src/lib/sentinel-api.ts`.
 
