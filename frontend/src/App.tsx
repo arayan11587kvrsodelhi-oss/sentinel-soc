@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import Overview from "./screens/Overview";
 import Incidents from "./screens/Incidents";
@@ -102,7 +102,7 @@ function SentinelEmblem({ size = 40 }: { size?: number }) {
     >
       <img
         src="/app-icon.png"
-        alt="Sentinel eagle emblem"
+        alt="Sentinel emblem"
         style={{
           width: "82%",
           height: "82%",
@@ -231,7 +231,10 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
             <button
               key={navItem.id}
               onClick={() => onNavigate(navItem.id)}
-              className="w-full text-left flex items-center gap-2.5 py-2 transition-all relative"
+              aria-current={isActive ? "page" : undefined}
+              aria-label={navItem.label}
+              type="button"
+              className="w-full text-left flex items-center gap-2.5 py-2 transition-colors duration-150 relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
               style={{
                 paddingLeft: navItem.indent ? "28px" : "20px",
                 paddingRight: "20px",
@@ -552,6 +555,31 @@ interface TopBarProps {
 function TopBar({ title, onNavigate }: TopBarProps) {
   const [searchVal, setSearchVal] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showNotifications) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowNotifications(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showNotifications]);
 
   const notifications = [
     {
@@ -627,9 +655,18 @@ function TopBar({ title, onNavigate }: TopBarProps) {
         <input
           type="text"
           placeholder="Search incidents, CVEs, IPs..."
+          aria-label="Search incidents, CVEs, IPs"
           value={searchVal}
           onChange={(e) => setSearchVal(e.target.value)}
-          className="w-full pl-9 pr-3 py-1.5 rounded-lg text-sm outline-none"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setSearchVal("");
+              e.currentTarget.blur();
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+            }
+          }}
+          className="w-full pl-9 pr-3 py-1.5 rounded-lg text-sm outline-none transition-all focus-visible:ring-1 focus-visible:ring-[#56B4FF]/40"
           style={{
             background: "#111925",
             border: "1px solid #1D2938",
@@ -668,18 +705,21 @@ function TopBar({ title, onNavigate }: TopBarProps) {
         </div>
 
         {/* Notifications */}
-        <div className="relative">
+        <div className="relative" ref={notifRef}>
           <button
             onClick={() =>
               setShowNotifications(!showNotifications)
             }
-            className="relative w-8 h-8 flex items-center justify-center rounded-lg transition-all"
+            type="button"
+            className="relative w-8 h-8 flex items-center justify-center rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
             style={{
               background: showNotifications
                 ? "#1D2938"
                 : "transparent",
             }}
             aria-label="Notifications"
+            aria-expanded={showNotifications}
+            aria-haspopup="dialog"
           >
             <svg
               className="w-4 h-4"
@@ -711,6 +751,8 @@ function TopBar({ title, onNavigate }: TopBarProps) {
 
           {showNotifications && (
             <div
+              role="dialog"
+              aria-label="Notifications"
               className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden shadow-2xl z-50"
               style={{
                 background: "#0D131D",
@@ -736,9 +778,10 @@ function TopBar({ title, onNavigate }: TopBarProps) {
               </div>
 
               {notifications.map((n, i) => (
-                <div
+                <button
+                  type="button"
                   key={n.title}
-                  className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-all"
+                  className="w-full text-left flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
                   style={{
                     borderBottom:
                       i < notifications.length - 1
@@ -762,9 +805,9 @@ function TopBar({ title, onNavigate }: TopBarProps) {
                     }}
                   />
 
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p
-                      className="text-xs font-medium"
+                      className="text-xs font-medium truncate"
                       style={{
                         color: "#F4F7FA",
                       }}
@@ -773,7 +816,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
                     </p>
 
                     <p
-                      className="text-[11px] mt-0.5"
+                      className="text-[11px] mt-0.5 truncate"
                       style={{
                         color: "#9AA8B8",
                       }}
@@ -790,7 +833,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
                   >
                     {n.time}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -937,6 +980,7 @@ function MobileNav({
         background: "#0D131D",
         borderTop: "1px solid #1D2938",
       }}
+      aria-label="Mobile Navigation"
     >
       {items.map((item) => {
         const isActive = current === item.id;
@@ -945,7 +989,10 @@ function MobileNav({
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all"
+            aria-current={isActive ? "page" : undefined}
+            aria-label={item.label}
+            type="button"
+            className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
             style={{
               color: isActive ? "#56B4FF" : "#627083",
               background: isActive
@@ -1069,11 +1116,11 @@ export default function App() {
               borderBottom: "1px solid #1D2938",
             }}
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
               <SentinelEmblem size={32} />
 
               <span
-                className="text-sm font-bold"
+                className="text-sm font-bold truncate"
                 style={{
                   color: "#F4F7FA",
                 }}
@@ -1082,10 +1129,7 @@ export default function App() {
               </span>
 
               <span
-                className="text-[10px] font-mono"
-                style={{
-                  color: "#627083",
-                }}
+                className="text-[10px] font-mono text-[#627083] hidden min-[360px]:inline truncate"
               >
                 SOC v2.2
               </span>
