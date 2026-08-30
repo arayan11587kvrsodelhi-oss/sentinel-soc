@@ -94,54 +94,25 @@ function SentinelEmblem({ size = 40 }: { size?: number }) {
         justifyContent: "center",
         overflow: "hidden",
         background:
-          "linear-gradient(145deg, rgba(86,180,255,0.16), rgba(124,140,255,0.08))",
+          "linear-gradient(145deg, rgba(86,180,255,0.16), rgba(147, 148, 159, 0.08))",
         border: "1px solid rgba(124,140,255,0.32)",
         boxShadow:
           "0 0 18px rgba(86,180,255,0.18), inset 0 0 18px rgba(124,140,255,0.06)",
       }}
     >
-      <svg
-        width={size * 0.68}
-        height={size * 0.68}
-        viewBox="0 0 64 64"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M32 4L52 11V28C52 41.5 44.1 52.1 32 59C19.9 52.1 12 41.5 12 28V11L32 4Z"
-          fill="rgba(86,180,255,0.08)"
-          stroke="#56B4FF"
-          strokeWidth="2.5"
-        />
-
-        <path
-          d="M32 12L44 16.2V28C44 36.8 39.5 44.1 32 48.7C24.5 44.1 20 36.8 20 28V16.2L32 12Z"
-          stroke="#7C8CFF"
-          strokeWidth="1.5"
-          opacity="0.85"
-        />
-
-        <path
-          d="M32 20L36.5 29H33.3L35.8 38L27 27.5H30.4L28.8 20H32Z"
-          fill="#56B4FF"
-          style={{
-            filter: "drop-shadow(0 0 4px rgba(86,180,255,0.8))",
-          }}
-        />
-
-        <circle
-          cx="32"
-          cy="32"
-          r="25"
-          stroke="rgba(86,180,255,0.18)"
-          strokeWidth="1"
-        />
-      </svg>
+      <img
+        src="/app-icon.png"
+        alt="Sentinel eagle emblem"
+        style={{
+          width: "82%",
+          height: "82%",
+          objectFit: "contain",
+          display: "block",
+        }}
+      />
     </div>
   );
-}
-
-/* =========================================================
+}/* =========================================================
    SIDEBAR LOGO
    ========================================================= */
 

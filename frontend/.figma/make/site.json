@@ -2,7 +2,7 @@
   "title": "SENTINEL SOC — Security Operations Center",
   "description": "Enhance cybersecurity education with a real-time operations platform for SOC analysts, featuring simulated attacks, incident management, and AI-driven analysis.",
   "icons": {
-    "icon": "/favicon.png"
+    "icon": "/favicon-32x32.png"
   },
   "robots": {
     "index": false
