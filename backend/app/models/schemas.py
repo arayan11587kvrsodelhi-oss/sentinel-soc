@@ -41,6 +41,70 @@ class SecurityEvent(BaseModel):
             self.type = self.event_type
 
 
+SEVERITY_WEIGHTS: Dict[str, int] = {
+    "CRITICAL": 100,
+    "HIGH": 75,
+    "MEDIUM": 50,
+    "LOW": 25,
+    "INFO": 10,
+}
+
+
+def calculate_risk_score(severity: Optional[str], confidence: Optional[float] = 1.0) -> int:
+    """
+    Calculate deterministic integer risk score (0-100) from severity weight and confidence.
+    Severity weights:
+      CRITICAL = 100
+      HIGH = 75
+      MEDIUM = 50
+      LOW = 25
+      INFO = 10
+    Formula: risk_score = severity_weight * confidence (rounded to nearest integer, clamped 0-100)
+    """
+    if confidence is None:
+        conf = 1.0
+    else:
+        try:
+            conf = float(confidence)
+        except (ValueError, TypeError):
+            conf = 1.0
+
+    sev_key = (severity or "INFO").upper().strip()
+    weight = SEVERITY_WEIGHTS.get(sev_key, 10)
+    score = int(round(weight * conf))
+    return max(0, min(100, score))
+
+
+def derive_risk_level(risk_score: int) -> str:
+    """
+    Convert risk_score (0-100) into a categorical risk level:
+      90-100 -> CRITICAL
+      70-89  -> HIGH
+      40-69  -> MEDIUM
+      20-39  -> LOW
+      0-19   -> INFO
+    """
+    if risk_score >= 90:
+        return "CRITICAL"
+    elif risk_score >= 70:
+        return "HIGH"
+    elif risk_score >= 40:
+        return "MEDIUM"
+    elif risk_score >= 20:
+        return "LOW"
+    else:
+        return "INFO"
+
+
+def calculate_risk(severity: Optional[str], confidence: Optional[float] = 1.0) -> tuple[str, int]:
+    """
+    Derive (risk_level, risk_score) from incident severity and confidence.
+    """
+    score = calculate_risk_score(severity, confidence)
+    level = derive_risk_level(score)
+    return level, score
+
+
 class Incident(BaseModel):
     incident_id: str
     id: Optional[str] = None
@@ -48,6 +112,8 @@ class Incident(BaseModel):
     severity: str
     status: str = "OPEN"
     confidence: float
+    risk: Optional[str] = None
+    risk_score: Optional[int] = None
     category: str
     source_ip: str
     target: str
@@ -70,6 +136,10 @@ class Incident(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         if not self.id:
             self.id = self.incident_id
+        if self.risk_score is None:
+            self.risk_score = calculate_risk_score(self.severity, self.confidence)
+        if not self.risk:
+            self.risk = derive_risk_level(self.risk_score)
         if not self.source_ips:
             self.source_ips = [self.source_ip] if self.source_ip else []
         elif self.source_ip and self.source_ip not in self.source_ips:

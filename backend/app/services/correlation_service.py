@@ -10,7 +10,7 @@ import sqlite3
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from app.models.schemas import SecurityEvent, Incident, MitreTechnique
+from app.models.schemas import SecurityEvent, Incident, MitreTechnique, calculate_risk_score, derive_risk_level, calculate_risk
 from app.services.mitre_service import get_technique
 
 logger = logging.getLogger("sentinel.correlation")
@@ -146,13 +146,24 @@ class CorrelationEngine:
                         attack_stage TEXT,
                         first_seen TEXT,
                         last_seen TEXT,
-                        scenario_id TEXT
+                        scenario_id TEXT,
+                        risk TEXT,
+                        risk_score INTEGER
                     )
                 """)
                 # Migrations for existing databases
-                for col in ("source_ips", "affected_targets", "attack_stage", "first_seen", "last_seen", "scenario_id"):
+                for col, col_type in (
+                    ("source_ips", "TEXT"),
+                    ("affected_targets", "TEXT"),
+                    ("attack_stage", "TEXT"),
+                    ("first_seen", "TEXT"),
+                    ("last_seen", "TEXT"),
+                    ("scenario_id", "TEXT"),
+                    ("risk", "TEXT"),
+                    ("risk_score", "INTEGER")
+                ):
                     try:
-                        conn.execute(f"ALTER TABLE incidents ADD COLUMN {col} TEXT")
+                        conn.execute(f"ALTER TABLE incidents ADD COLUMN {col} {col_type}")
                     except Exception:
                         pass
                 conn.commit()
@@ -161,6 +172,11 @@ class CorrelationEngine:
 
     def _save_incident_to_db(self, inc: Incident):
         try:
+            if inc.risk_score is None:
+                inc.risk_score = calculate_risk_score(inc.severity, inc.confidence)
+            if not inc.risk:
+                inc.risk = derive_risk_level(inc.risk_score)
+
             with self._get_db_conn() as conn:
                 conn.execute("""
                     INSERT INTO incidents (
@@ -168,8 +184,9 @@ class CorrelationEngine:
                         source_ip, target, event_ids, events_count, techniques,
                         related_cves, created_at, updated_at, summary,
                         recommended_actions, ai_analysis,
-                        source_ips, affected_targets, attack_stage, first_seen, last_seen, scenario_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        source_ips, affected_targets, attack_stage, first_seen, last_seen, scenario_id,
+                        risk, risk_score
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(incident_id) DO UPDATE SET
                         title=excluded.title,
                         severity=excluded.severity,
@@ -187,7 +204,9 @@ class CorrelationEngine:
                         affected_targets=excluded.affected_targets,
                         attack_stage=excluded.attack_stage,
                         last_seen=excluded.last_seen,
-                        scenario_id=excluded.scenario_id
+                        scenario_id=excluded.scenario_id,
+                        risk=excluded.risk,
+                        risk_score=excluded.risk_score
                 """, (
                     inc.incident_id,
                     inc.title,
@@ -211,7 +230,9 @@ class CorrelationEngine:
                     inc.attack_stage or "Initial Access",
                     inc.first_seen or inc.created_at,
                     inc.last_seen or inc.updated_at,
-                    inc.scenario_id
+                    inc.scenario_id,
+                    inc.risk,
+                    inc.risk_score
                 ))
                 conn.commit()
         except Exception as e:
@@ -234,6 +255,8 @@ class CorrelationEngine:
                         first_seen = row["first_seen"] if "first_seen" in row.keys() and row["first_seen"] else row["created_at"]
                         last_seen = row["last_seen"] if "last_seen" in row.keys() and row["last_seen"] else row["updated_at"]
                         scenario_id = row["scenario_id"] if "scenario_id" in row.keys() and row["scenario_id"] else None
+                        risk = row["risk"] if "risk" in row.keys() and row["risk"] else None
+                        risk_score = row["risk_score"] if "risk_score" in row.keys() and row["risk_score"] is not None else None
 
                         # Legacy DB migration: detect scenario_id for known baseline seeds if missing
                         if not scenario_id:
@@ -259,6 +282,8 @@ class CorrelationEngine:
                             severity=row["severity"],
                             status=row["status"],
                             confidence=row["confidence"],
+                            risk=risk,
+                            risk_score=risk_score,
                             category=row["category"],
                             source_ip=row["source_ip"],
                             target=row["target"],
@@ -435,6 +460,8 @@ class CorrelationEngine:
                 existing_inc.last_seen = event.timestamp or now_str
                 existing_inc.updated_at = now_str
                 existing_inc.confidence = min(0.99, round(existing_inc.confidence + 0.01, 2))
+                existing_inc.risk_score = calculate_risk_score(existing_inc.severity, existing_inc.confidence)
+                existing_inc.risk = derive_risk_level(existing_inc.risk_score)
 
                 self._save_incident_to_db(existing_inc)
                 return existing_inc
@@ -534,6 +561,8 @@ class CorrelationEngine:
             existing_non_sim.last_seen = event.timestamp or now_str
             existing_non_sim.updated_at = now_str
             existing_non_sim.confidence = min(0.99, round(existing_non_sim.confidence + 0.01, 2))
+            existing_non_sim.risk_score = calculate_risk_score(existing_non_sim.severity, existing_non_sim.confidence)
+            existing_non_sim.risk = derive_risk_level(existing_non_sim.risk_score)
 
             self._save_incident_to_db(existing_non_sim)
             return existing_non_sim
@@ -815,6 +844,8 @@ class CorrelationEngine:
                     first_seen = row["first_seen"] if "first_seen" in row.keys() and row["first_seen"] else row["created_at"]
                     last_seen = row["last_seen"] if "last_seen" in row.keys() and row["last_seen"] else row["updated_at"]
                     scenario_id = row["scenario_id"] if "scenario_id" in row.keys() and row["scenario_id"] else None
+                    risk = row["risk"] if "risk" in row.keys() and row["risk"] else None
+                    risk_score = row["risk_score"] if "risk_score" in row.keys() and row["risk_score"] is not None else None
 
                     inc = Incident(
                         incident_id=row["incident_id"],
@@ -824,6 +855,8 @@ class CorrelationEngine:
                         severity=row["severity"],
                         status=row["status"],
                         confidence=row["confidence"],
+                        risk=risk,
+                        risk_score=risk_score,
                         category=row["category"],
                         source_ip=row["source_ip"],
                         target=row["target"],

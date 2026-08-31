@@ -13,7 +13,7 @@ from app.services.simulation_service import simulation_engine, SCENARIOS
 from app.services.correlation_service import CorrelationEngine
 from app.services.cisa_service import is_in_kev, get_kev_dict
 from app.services.mitre_service import get_technique
-from app.models.schemas import SecurityEvent, Incident, MitreTechnique
+from app.models.schemas import SecurityEvent, Incident, MitreTechnique, calculate_risk_score, derive_risk_level, calculate_risk
 
 client = TestClient(app)
 
@@ -734,8 +734,112 @@ def run_tests():
     assert inc_101_check.scenario_id == "scenario_ransomware_execution"
     print(" -> Exact production bug reproduction verified: INC-101 ransomware incident was NOT mutated by Web CVE scan event.")
 
+    # 42. Risk Calculation & Level Derivation Matrix
+    print("\n[42] Testing Deterministic Risk Calculation & Level Derivation ...")
+    # Prompt examples:
+    # CRITICAL + 0.99 -> 99, CRITICAL
+    # HIGH + 0.90 -> 68, MEDIUM
+    # MEDIUM + 0.80 -> 40, MEDIUM
+    # LOW + 0.95 -> 24, LOW
+    assert calculate_risk_score("CRITICAL", 0.99) == 99
+    assert derive_risk_level(99) == "CRITICAL"
+    assert calculate_risk("CRITICAL", 0.99) == ("CRITICAL", 99)
+
+    assert calculate_risk_score("HIGH", 0.90) == 68
+    assert derive_risk_level(68) == "MEDIUM"
+    assert calculate_risk("HIGH", 0.90) == ("MEDIUM", 68)
+
+    assert calculate_risk_score("MEDIUM", 0.80) == 40
+    assert derive_risk_level(40) == "MEDIUM"
+    assert calculate_risk("MEDIUM", 0.80) == ("MEDIUM", 40)
+
+    assert calculate_risk_score("LOW", 0.95) == 24
+    assert derive_risk_level(24) == "LOW"
+    assert calculate_risk("LOW", 0.95) == ("LOW", 24)
+
+    assert calculate_risk_score("INFO", 1.0) == 10
+    assert derive_risk_level(10) == "INFO"
+
+    # Edge cases & clamping
+    assert calculate_risk_score("CRITICAL", 1.0) == 100
+    assert derive_risk_level(100) == "CRITICAL"
+    assert calculate_risk_score("CRITICAL", None) == 100
+    assert calculate_risk_score("CRITICAL", 1.5) == 100  # Clamped to 100
+    assert calculate_risk_score("LOW", -0.5) == 0        # Clamped to 0
+    assert derive_risk_level(0) == "INFO"
+    assert derive_risk_level(19) == "INFO"
+    assert derive_risk_level(20) == "LOW"
+    assert derive_risk_level(39) == "LOW"
+    assert derive_risk_level(40) == "MEDIUM"
+    assert derive_risk_level(69) == "MEDIUM"
+    assert derive_risk_level(70) == "HIGH"
+    assert derive_risk_level(89) == "HIGH"
+    assert derive_risk_level(90) == "CRITICAL"
+    print(" -> Deterministic risk calculation and level derivation matrix verified.")
+
+    # 43. Incident REST APIs & WebSocket INCIDENT_UPDATE Risk Payload Verification
+    print("\n[43] Testing Incident REST APIs & WebSocket INCIDENT_UPDATE Risk Fields ...")
+    r_inc = client.get("/api/incidents")
+    assert r_inc.status_code == 200
+    inc_list = r_inc.json()
+    assert len(inc_list) >= 1
+    for inc_obj in inc_list:
+        assert "risk" in inc_obj, f"Incident {inc_obj.get('incident_id')} missing 'risk'"
+        assert "risk_score" in inc_obj, f"Incident {inc_obj.get('incident_id')} missing 'risk_score'"
+        assert isinstance(inc_obj["risk_score"], int)
+        assert inc_obj["risk"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+        expected_score = calculate_risk_score(inc_obj["severity"], inc_obj["confidence"])
+        expected_risk = derive_risk_level(expected_score)
+        assert inc_obj["risk_score"] == expected_score, f"Risk score mismatch on {inc_obj['incident_id']}"
+        assert inc_obj["risk"] == expected_risk, f"Risk level mismatch on {inc_obj['incident_id']}"
+
+    # Verify single incident detail endpoint
+    first_id = inc_list[0]["incident_id"]
+    r_single = client.get(f"/api/incidents/{first_id}")
+    assert r_single.status_code == 200
+    single_data = r_single.json()
+    assert "risk" in single_data and "risk_score" in single_data
+
+    # Verify WebSocket INITIAL_STATE and INCIDENT_UPDATE
+    with client.websocket_connect("/ws/events") as ws:
+        init_state = ws.receive_json()
+        assert init_state.get("type") == "INITIAL_STATE"
+        active_incs = init_state.get("active_incidents", [])
+        for a_inc in active_incs:
+            assert "risk" in a_inc
+            assert "risk_score" in a_inc
+            assert isinstance(a_inc["risk_score"], int)
+            assert a_inc["risk"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+
+        # Trigger scenario and verify INCIDENT_UPDATE payload contains risk and risk_score
+        ws.send_json({"type": "TRIGGER_SCENARIO", "scenario_id": "scenario_credential_brute_force"})
+        received_inc_updates = []
+        for _ in range(12):
+            try:
+                msg = ws.receive_json()
+                if msg.get("type") == "INCIDENT_UPDATE":
+                    inc_update = msg.get("incident", {})
+                    received_inc_updates.append(inc_update)
+            except Exception:
+                break
+
+        assert len(received_inc_updates) >= 1, "Must receive INCIDENT_UPDATE with risk fields"
+        for upd in received_inc_updates:
+            assert "severity" in upd
+            assert "confidence" in upd
+            assert "risk" in upd
+            assert "risk_score" in upd
+            assert isinstance(upd["risk_score"], int)
+            assert upd["risk"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+            exp_s = calculate_risk_score(upd["severity"], upd["confidence"])
+            exp_r = derive_risk_level(exp_s)
+            assert upd["risk_score"] == exp_s
+            assert upd["risk"] == exp_r
+
+        print(f" -> WebSocket INITIAL_STATE & INCIDENT_UPDATE verified: {len(received_inc_updates)} updates verified with live calculated risk and risk_score.")
+
     print("\n==================================================")
-    print("ALL 41 PRODUCTION HARDENING, CONCURRENCY & ISOLATION AUDIT TESTS PASSED!")
+    print("ALL 43 PRODUCTION HARDENING, RISK CALCULATION & ISOLATION AUDIT TESTS PASSED!")
     print("==================================================")
 
 if __name__ == "__main__":

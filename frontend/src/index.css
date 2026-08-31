@@ -17,7 +17,7 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Screen transition ─────────────────────────────────── */
+/* --- Screen transition ----------------------------------- */
 @keyframes screenEnter {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -26,7 +26,7 @@ html, body, #root {
   animation: screenEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* ─── Popover / dropdown fade ───────────────────────────── */
+/* --- Popover / dropdown fade ----------------------------- */
 @keyframes popIn {
   from { opacity: 0; transform: scale(0.96) translateY(-4px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
@@ -35,7 +35,7 @@ html, body, #root {
   animation: popIn 0.15s ease-out both;
 }
 
-/* ─── Slide-in for panels ───────────────────────────────── */
+/* --- Slide-in for panels --------------------------------- */
 @keyframes slideRight {
   from { opacity: 0; transform: translateX(10px); }
   to   { opacity: 1; transform: translateX(0); }
@@ -44,16 +44,25 @@ html, body, #root {
   animation: slideRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* ─── Scrollbars ────────────────────────────────────────── */
+/* --- Scrollbars ------------------------------------------ */
 ::-webkit-scrollbar        { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  { background: #1d2938; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #2d3f52; }
 
-/* ─── Input focus ───────────────────────────────────────── */
+/* --- Input focus & Keyboard Focus Visible ---------------- */
 input:focus { box-shadow: 0 0 0 2px #56b4ff1a; }
 
-/* ─── Custom Cursor & Pointer Interactions ──────────────── */
+:focus-visible {
+  outline: 2px solid rgba(86, 180, 255, 0.45);
+  outline-offset: 1px;
+}
+button:focus-visible, a:focus-visible, input:focus-visible {
+  outline: 2px solid rgba(86, 180, 255, 0.5);
+  outline-offset: 1px;
+}
+
+/* --- Custom Cursor & Pointer Interactions ---------------- */
 #sentinel-custom-cursor {
   pointer-events: none !important;
 }
@@ -64,7 +73,7 @@ input:focus { box-shadow: 0 0 0 2px #56b4ff1a; }
   }
 }
 
-/* ─── Reduced Motion ────────────────────────────────────── */
+/* --- Reduced Motion -------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
     animation-duration: 0.01ms !important;
@@ -72,7 +81,7 @@ input:focus { box-shadow: 0 0 0 2px #56b4ff1a; }
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  .screen-enter, .pop-in, .slide-right {
+  .animate-pulse, .screen-enter, .pop-in, .slide-right {
     animation: none !important;
   }
 }
