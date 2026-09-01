@@ -1,165 +1,380 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react"
+import {
+  Incident,
+  getIncidents,
+  FALLBACK_INCIDENTS,
+  wsManager,
+} from "../lib/sentinel-api"
+import IncidentDrawer from "../components/IncidentDrawer"
+import { ProvenanceBadge } from "../components/ProvenanceBadge"
 
 const sevColor: Record<string, string> = {
   CRITICAL: "#FF4D5E",
   HIGH: "#FF8A4C",
   MEDIUM: "#F4C95D",
   LOW: "#56B4FF",
-};
+}
 
 const statusConfig: Record<string, { color: string; bg: string }> = {
-  INVESTIGATING: { color: "#FF4D5E", bg: "#FF4D5E15" },
-  NEW: { color: "#FF8A4C", bg: "#FF8A4C15" },
-  REVIEW: { color: "#56B4FF", bg: "#56B4FF15" },
-  RESOLVED: { color: "#42D392", bg: "#42D39215" },
-  CLOSED: { color: "#627083", bg: "#62708315" },
-};
-
-const incidents = [
-  { id: "INC-00842", severity: "CRITICAL", title: "Credential Attack", source: "auth-01", technique: "T1110", risk: 94, status: "INVESTIGATING", time: "2m" },
-  { id: "INC-00841", severity: "HIGH", title: "Suspicious PowerShell Execution", source: "host-04", technique: "T1059.001", risk: 81, status: "NEW", time: "8m" },
-  { id: "INC-00840", severity: "MEDIUM", title: "Network Scan Detected", source: "fw-02", technique: "T1046", risk: 57, status: "REVIEW", time: "14m" },
-  { id: "INC-00839", severity: "LOW", title: "DNS Enumeration Activity", source: "dns-01", technique: "T1018", risk: 32, status: "REVIEW", time: "22m" },
-  { id: "INC-00838", severity: "HIGH", title: "Lateral Movement — SMB", source: "host-07", technique: "T1021.002", risk: 78, status: "INVESTIGATING", time: "31m" },
-  { id: "INC-00837", severity: "MEDIUM", title: "Scheduled Task Creation", source: "host-02", technique: "T1053.005", risk: 52, status: "REVIEW", time: "45m" },
-  { id: "INC-00836", severity: "CRITICAL", title: "Data Exfiltration Attempt", source: "proxy-01", technique: "T1048", risk: 96, status: "INVESTIGATING", time: "58m" },
-  { id: "INC-00835", severity: "HIGH", title: "Privilege Escalation", source: "host-03", technique: "T1068", risk: 83, status: "INVESTIGATING", time: "1h 12m" },
-  { id: "INC-00834", severity: "MEDIUM", title: "Registry Modification", source: "host-09", technique: "T1112", risk: 48, status: "REVIEW", time: "1h 34m" },
-  { id: "INC-00833", severity: "LOW", title: "Unusual Process Spawn", source: "host-11", technique: "T1036", risk: 28, status: "REVIEW", time: "2h 05m" },
-  { id: "INC-00832", severity: "HIGH", title: "Credential Dumping", source: "host-06", technique: "T1003", risk: 87, status: "REVIEW", time: "2h 41m" },
-  { id: "INC-00831", severity: "MEDIUM", title: "Suspicious Outbound Connection", source: "host-14", technique: "T1071", risk: 61, status: "RESOLVED", time: "3h 18m" },
-];
+  INVESTIGATING: { color: "#FF4D5E", bg: "rgba(255,77,94,0.12)" },
+  OPEN: { color: "#56B4FF", bg: "rgba(86,180,255,0.12)" },
+  CONTAINED: { color: "#F4C95D", bg: "rgba(244,201,93,0.12)" },
+  RESOLVED: { color: "#42D392", bg: "rgba(66,211,146,0.12)" },
+}
 
 interface IncidentsProps {
-  onNavigate: (screen: string) => void;
+  onNavigate: (screen: string) => void
 }
 
 export default function Incidents({ onNavigate }: IncidentsProps) {
-  const [search, setSearch] = useState("");
-  const [sevFilter, setSevFilter] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [incidentsList, setIncidentsList] =
+    useState<Incident[]>(FALLBACK_INCIDENTS)
+  const [isLoading, setIsLoading] = useState(true)
+  const [search, setSearch] = useState("")
+  const [sevFilter, setSevFilter] = useState("ALL")
+  const [statusFilter, setStatusFilter] = useState("ALL")
+  const [sourceFilter, setSourceFilter] = useState("ALL")
+  const [sortBy, setSortBy] = useState<"newest" | "severity" | "risk">("newest")
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(
+    null,
+  )
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
-  const filtered = incidents.filter((inc) => {
-    const matchSearch =
-      !search ||
-      inc.title.toLowerCase().includes(search.toLowerCase()) ||
-      inc.id.toLowerCase().includes(search.toLowerCase()) ||
-      inc.technique.toLowerCase().includes(search.toLowerCase());
-    const matchSev = sevFilter === "ALL" || inc.severity === sevFilter;
-    const matchStatus = statusFilter === "ALL" || inc.status === statusFilter;
-    return matchSearch && matchSev && matchStatus;
-  });
+  // Load incidents from backend
+  const fetchIncidentData = async () => {
+    try {
+      const data = await getIncidents()
+      if (data && data.length > 0) {
+        setIncidentsList(data)
+      }
+    } catch (err) {
+      console.warn("Using fallback incidents data:", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchIncidentData()
+
+    // Subscribe to WebSocket updates
+    const unsubscribe = wsManager.subscribe((msg) => {
+      if (msg.type === "INITIAL_STATE" && msg.active_incidents) {
+        setIncidentsList((prev) => {
+          const map = new Map(prev.map((i) => [i.incident_id, i]))
+          msg.active_incidents.forEach((inc: Incident) =>
+            map.set(inc.incident_id, inc),
+          )
+          return Array.from(map.values())
+        })
+      } else if (msg.type === "INCIDENT_UPDATE" && msg.incident) {
+        setIncidentsList((prev) => {
+          const updated = msg.incident as Incident
+          const exists = prev.some((i) => i.incident_id === updated.incident_id)
+          if (exists) {
+            return prev.map((i) =>
+              i.incident_id === updated.incident_id ? updated : i,
+            )
+          } else {
+            return [updated, ...prev]
+          }
+        })
+      }
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  // Compute unique sources for source filter
+  const availableSources = useMemo(() => {
+    const set = new Set<string>()
+    incidentsList.forEach((i) => {
+      if (i.source_ip) set.add(i.source_ip)
+      if (i.source_ips) i.source_ips.forEach((ip) => set.add(ip))
+    })
+    return Array.from(set)
+  }, [incidentsList])
+
+  // Counts by severity
+  const counts = useMemo(() => {
+    return {
+      TOTAL: incidentsList.length,
+      CRITICAL: incidentsList.filter((i) => i.severity === "CRITICAL").length,
+      HIGH: incidentsList.filter((i) => i.severity === "HIGH").length,
+      MEDIUM: incidentsList.filter((i) => i.severity === "MEDIUM").length,
+      LOW: incidentsList.filter((i) => i.severity === "LOW").length,
+    }
+  }, [incidentsList])
+
+  // Filter and sort incidents
+  const filteredAndSorted = useMemo(() => {
+    return incidentsList
+      .filter((inc) => {
+        const q = search.toLowerCase()
+        const matchSearch =
+          !search ||
+          inc.title.toLowerCase().includes(q) ||
+          inc.incident_id.toLowerCase().includes(q) ||
+          inc.target.toLowerCase().includes(q) ||
+          inc.source_ip.toLowerCase().includes(q) ||
+          (inc.category && inc.category.toLowerCase().includes(q)) ||
+          (inc.summary && inc.summary.toLowerCase().includes(q))
+
+        const matchSev = sevFilter === "ALL" || inc.severity === sevFilter
+        const matchStatus =
+          statusFilter === "ALL" || inc.status === statusFilter
+        const matchSource =
+          sourceFilter === "ALL" ||
+          inc.source_ip === sourceFilter ||
+          (inc.source_ips && inc.source_ips.includes(sourceFilter))
+
+        return matchSearch && matchSev && matchStatus && matchSource
+      })
+      .sort((a, b) => {
+        if (sortBy === "severity") {
+          const weights: Record<string, number> = {
+            CRITICAL: 4,
+            HIGH: 3,
+            MEDIUM: 2,
+            LOW: 1,
+          }
+          return (weights[b.severity] || 0) - (weights[a.severity] || 0)
+        }
+        if (sortBy === "risk") {
+          return (b.risk_score || 0) - (a.risk_score || 0)
+        }
+        // default "newest"
+        return (
+          new Date(b.updated_at || 0).getTime() -
+          new Date(a.updated_at || 0).getTime()
+        )
+      })
+  }, [incidentsList, search, sevFilter, statusFilter, sourceFilter, sortBy])
+
+  const handleOpenIncident = (inc: Incident) => {
+    setSelectedIncident(inc)
+    setIsDrawerOpen(true)
+  }
+
+  const handleIncidentUpdated = (updated: Incident) => {
+    setIncidentsList((prev) =>
+      prev.map((i) => (i.incident_id === updated.incident_id ? updated : i)),
+    )
+    setSelectedIncident(updated)
+  }
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#627083]">
+              INCIDENT INTELLIGENCE & INVESTIGATION
+            </span>
+            <ProvenanceBadge type="live" />
+          </div>
           <h1 className="text-xl font-semibold" style={{ color: "#F4F7FA" }}>
-            Incidents
+            Security Incidents
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "#9AA8B8" }}>
-            {filtered.length} active investigations
+            {filteredAndSorted.length} matching investigations ·{" "}
+            {counts.CRITICAL} Critical Active
           </p>
         </div>
-        <button
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
-          style={{ background: "#56B4FF15", color: "#56B4FF", border: "1px solid #56B4FF30" }}
-        >
-          <span>+</span> New Incident
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() =>
+              wsManager.triggerScenario("scenario_credential_brute_force")
+            }
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer hover:bg-[#56B4FF25]"
+            style={{
+              background: "#56B4FF15",
+              color: "#56B4FF",
+              border: "1px solid #56B4FF30",
+            }}
+          >
+            <span>⚡</span> Trigger Test Scenario
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
+      {/* Severity Metric Cards */}
+      <div className="grid grid-cols-5 gap-3">
+        {[
+          {
+            label: "ALL INCIDENTS",
+            count: counts.TOTAL,
+            color: "#F4F7FA",
+            filterKey: "ALL",
+          },
+          {
+            label: "CRITICAL",
+            count: counts.CRITICAL,
+            color: "#FF4D5E",
+            filterKey: "CRITICAL",
+          },
+          {
+            label: "HIGH",
+            count: counts.HIGH,
+            color: "#FF8A4C",
+            filterKey: "HIGH",
+          },
+          {
+            label: "MEDIUM",
+            count: counts.MEDIUM,
+            color: "#F4C95D",
+            filterKey: "MEDIUM",
+          },
+          {
+            label: "LOW",
+            count: counts.LOW,
+            color: "#56B4FF",
+            filterKey: "LOW",
+          },
+        ].map((c) => {
+          const isSelected = sevFilter === c.filterKey
+          return (
+            <button
+              key={c.label}
+              onClick={() => setSevFilter(c.filterKey)}
+              className="rounded-xl p-3 text-left transition-all cursor-pointer focus:outline-none"
+              style={{
+                background: isSelected ? "#1D2938" : "#111925",
+                border: isSelected
+                  ? `1px solid ${c.color}60`
+                  : "1px solid #1D2938",
+                boxShadow: isSelected ? `0 0 12px ${c.color}20` : "none",
+              }}
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[#627083]">
+                {c.label}
+              </div>
+              <div
+                className="text-2xl font-bold font-mono mt-1 tabular-nums"
+                style={{ color: c.color }}
+              >
+                {c.count}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Filters Bar */}
       <div
-        className="flex items-center gap-3 p-3 rounded-xl"
+        className="flex flex-wrap items-center gap-3 p-3 rounded-xl"
         style={{ background: "#0D131D", border: "1px solid #1D2938" }}
       >
-        <div className="relative flex-1 max-w-sm">
+        {/* Search Input */}
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5"
-            style={{ color: "#627083" }}
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#627083]"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
           </svg>
           <input
             type="text"
-            placeholder="Search incidents..."
+            placeholder="Search incident, target, IP, summary..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg text-sm outline-none transition-all"
-            style={{
-              background: "#111925",
-              border: "1px solid #1D2938",
-              color: "#F4F7FA",
-            }}
+            className="w-full pl-9 pr-3 py-1.5 rounded-lg text-xs outline-none transition-all text-[#F4F7FA] bg-[#111925] border border-[#1D2938] focus:border-[#56B4FF]"
           />
         </div>
 
-        <div className="flex items-center gap-2 ml-2">
-          <span className="text-xs" style={{ color: "#627083" }}>
-            Severity:
-          </span>
-          {["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setSevFilter(s)}
-              className="px-2.5 py-1 rounded-md text-xs font-medium transition-all"
-              style={{
-                background:
-                  sevFilter === s
-                    ? s === "ALL"
-                      ? "#1D2938"
-                      : sevColor[s] + "20"
-                    : "transparent",
-                color:
-                  sevFilter === s
-                    ? s === "ALL"
-                      ? "#F4F7FA"
-                      : sevColor[s]
-                    : "#627083",
-                border: sevFilter === s ? `1px solid ${s === "ALL" ? "#1D2938" : sevColor[s] + "40"}` : "1px solid transparent",
-              }}
-            >
-              {s}
-            </button>
-          ))}
+        {/* Status Filter */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-[#627083]">Status:</span>
+          {["ALL", "OPEN", "INVESTIGATING", "CONTAINED", "RESOLVED"].map(
+            (st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className="px-2 py-1 rounded text-xs font-medium transition-all"
+                style={{
+                  background: statusFilter === st ? "#1D2938" : "transparent",
+                  color: statusFilter === st ? "#F4F7FA" : "#627083",
+                  border:
+                    statusFilter === st
+                      ? "1px solid #1D2938"
+                      : "1px solid transparent",
+                }}
+              >
+                {st}
+              </button>
+            ),
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs" style={{ color: "#627083" }}>
-            Status:
-          </span>
-          {["ALL", "NEW", "INVESTIGATING", "REVIEW", "RESOLVED"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className="px-2.5 py-1 rounded-md text-xs font-medium transition-all"
-              style={{
-                background: statusFilter === s ? "#1D2938" : "transparent",
-                color: statusFilter === s ? "#F4F7FA" : "#627083",
-                border: statusFilter === s ? "1px solid #1D2938" : "1px solid transparent",
-              }}
+        {/* Source Filter if multiple */}
+        {availableSources.length > 1 && (
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-xs text-[#627083]">Source:</span>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="text-xs px-2 py-1 rounded bg-[#111925] border border-[#1D2938] text-[#9AA8B8] outline-none"
             >
-              {s}
-            </button>
-          ))}
+              <option value="ALL">All Sources</option>
+              {availableSources.map((ip) => (
+                <option key={ip} value={ip}>
+                  {ip}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Sort selector */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-[#627083]">Sort:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="text-xs px-2 py-1 rounded bg-[#111925] border border-[#1D2938] text-[#9AA8B8] outline-none"
+          >
+            <option value="newest">Newest First</option>
+            <option value="severity">Highest Severity</option>
+            <option value="risk">Highest Risk Score</option>
+          </select>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #1D2938" }}>
-        <table className="w-full">
+      {/* Incidents Table */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ border: "1px solid #1D2938" }}
+      >
+        <table className="w-full text-left">
           <thead>
-            <tr style={{ background: "#0D131D", borderBottom: "1px solid #1D2938" }}>
-              {["SEVERITY", "INCIDENT", "SOURCE", "MITRE", "RISK", "STATUS", "TIME"].map((h) => (
+            <tr
+              style={{
+                background: "#0D131D",
+                borderBottom: "1px solid #1D2938",
+              }}
+            >
+              {[
+                "SEVERITY",
+                "INCIDENT & TITLE",
+                "AFFECTED TARGET",
+                "SOURCE IP",
+                "MITRE / CVE",
+                "RISK",
+                "STATUS",
+                "LAST UPDATED",
+              ].map((h) => (
                 <th
                   key={h}
-                  className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase"
-                  style={{ color: "#627083" }}
+                  className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[#627083]"
                 >
                   {h}
                 </th>
@@ -167,133 +382,188 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((inc, i) => (
-              <tr
-                key={inc.id}
-                className="cursor-pointer transition-all group"
-                style={{
-                  background: i % 2 === 0 ? "#111925" : "#0F1720",
-                  borderBottom: "1px solid #1D293840",
-                }}
-                onClick={() => onNavigate("incident-investigation")}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "#1D293830";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = i % 2 === 0 ? "#111925" : "#0F1720";
-                }}
-              >
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-1.5 h-5 rounded-sm"
-                      style={{ background: sevColor[inc.severity] }}
-                    />
-                    <span
-                      className="text-xs font-semibold"
-                      style={{ color: sevColor[inc.severity] }}
-                    >
-                      {inc.severity}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <div>
-                    <div className="text-sm font-medium" style={{ color: "#F4F7FA" }}>
-                      {inc.title}
-                    </div>
-                    <div className="text-[11px] font-mono mt-0.5" style={{ color: "#627083" }}>
-                      {inc.id}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-sm font-mono" style={{ color: "#9AA8B8" }}>
-                    {inc.source}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className="text-xs font-mono px-1.5 py-0.5 rounded"
-                    style={{ background: "#7C8CFF15", color: "#7C8CFF", border: "1px solid #7C8CFF20" }}
-                  >
-                    {inc.technique}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1 rounded-full" style={{ background: "#1D2938" }}>
+            {filteredAndSorted.map((inc, i) => {
+              const rScore = inc.risk_score ?? 80
+              const primaryTech =
+                inc.techniques && inc.techniques.length > 0
+                  ? inc.techniques[0].id
+                  : null
+              const primaryCve =
+                inc.related_cves && inc.related_cves.length > 0
+                  ? inc.related_cves[0]
+                  : null
+
+              return (
+                <tr
+                  key={inc.incident_id}
+                  className="cursor-pointer transition-colors group"
+                  style={{
+                    background: i % 2 === 0 ? "#111925" : "#0F1720",
+                    borderBottom: "1px solid rgba(29,41,56,0.4)",
+                  }}
+                  onClick={() => handleOpenIncident(inc)}
+                  onMouseEnter={(e) => {
+                    ;(e.currentTarget as HTMLElement).style.background =
+                      "#182333"
+                  }}
+                  onMouseLeave={(e) => {
+                    ;(e.currentTarget as HTMLElement).style.background =
+                      i % 2 === 0 ? "#111925" : "#0F1720"
+                  }}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
                       <div
-                        className="h-1 rounded-full"
+                        className="w-1.5 h-5 rounded-sm"
                         style={{
-                          width: `${inc.risk}%`,
-                          background:
-                            inc.risk >= 80
-                              ? "#FF4D5E"
-                              : inc.risk >= 60
-                              ? "#FF8A4C"
-                              : inc.risk >= 40
-                              ? "#F4C95D"
-                              : "#56B4FF",
+                          background: sevColor[inc.severity] || "#56B4FF",
                         }}
                       />
+                      <span
+                        className="text-xs font-bold font-mono"
+                        style={{ color: sevColor[inc.severity] || "#56B4FF" }}
+                      >
+                        {inc.severity}
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold tabular-nums" style={{ color: "#F4F7FA" }}>
-                      {inc.risk}
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <div>
+                      <div className="text-sm font-semibold text-[#F4F7FA] group-hover:text-[#56B4FF] transition-colors">
+                        {inc.title}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] font-mono text-[#627083] mt-0.5">
+                        <span>{inc.incident_id}</span>
+                        <span>·</span>
+                        <span>{inc.category}</span>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-mono text-[#9AA8B8]">
+                      {inc.target}
                     </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className="text-[11px] font-medium px-2 py-0.5 rounded"
-                    style={{
-                      color: statusConfig[inc.status]?.color ?? "#9AA8B8",
-                      background: statusConfig[inc.status]?.bg ?? "#1D2938",
-                    }}
-                  >
-                    {inc.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-sm" style={{ color: "#627083" }}>
-                    {inc.time}
-                  </span>
-                </td>
-              </tr>
-            ))}
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-mono text-[#9AA8B8]">
+                      {inc.source_ip}
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      {primaryTech && (
+                        <span
+                          className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                          style={{
+                            background: "rgba(124,140,255,0.15)",
+                            color: "#7C8CFF",
+                            border: "1px solid rgba(124,140,255,0.25)",
+                          }}
+                        >
+                          {primaryTech}
+                        </span>
+                      )}
+                      {primaryCve && (
+                        <span
+                          className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                          style={{
+                            background: "rgba(255,138,76,0.15)",
+                            color: "#FF8A4C",
+                            border: "1px solid rgba(255,138,76,0.25)",
+                          }}
+                        >
+                          KEV
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-12 h-1 rounded-full bg-[#1D2938]">
+                        <div
+                          className="h-1 rounded-full"
+                          style={{
+                            width: `${rScore}%`,
+                            background:
+                              rScore >= 90
+                                ? "#FF4D5E"
+                                : rScore >= 70
+                                  ? "#FF8A4C"
+                                  : rScore >= 40
+                                    ? "#F4C95D"
+                                    : "#56B4FF",
+                          }}
+                        />
+                      </div>
+                      <span className="text-xs font-mono font-semibold text-[#F4F7FA] tabular-nums">
+                        {rScore}
+                      </span>
+                    </div>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <span
+                      className="text-[11px] font-medium px-2 py-0.5 rounded"
+                      style={{
+                        color: statusConfig[inc.status]?.color ?? "#9AA8B8",
+                        background: statusConfig[inc.status]?.bg ?? "#1D2938",
+                      }}
+                    >
+                      {inc.status}
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-mono text-[#627083]">
+                      {new Date(
+                        inc.updated_at || Date.now(),
+                      ).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
-          <div className="py-16 text-center" style={{ background: "#111925" }}>
-            <p style={{ color: "#627083" }}>No incidents match current filters</p>
+        {filteredAndSorted.length === 0 && (
+          <div className="py-16 text-center bg-[#111925]">
+            <p className="text-sm text-[#627083]">
+              No incidents match the active filters.
+            </p>
           </div>
         )}
 
-        {/* Pagination */}
         <div
-          className="flex items-center justify-between px-4 py-2.5"
-          style={{ background: "#0D131D", borderTop: "1px solid #1D2938" }}
+          className="flex items-center justify-between px-4 py-2.5 bg-[#0D131D]"
+          style={{ borderTop: "1px solid #1D2938" }}
         >
-          <span className="text-xs" style={{ color: "#627083" }}>
-            Showing {filtered.length} of {incidents.length} incidents
+          <span className="text-xs text-[#627083]">
+            Showing {filteredAndSorted.length} of {incidentsList.length}{" "}
+            incidents
           </span>
-          <div className="flex items-center gap-1">
-            {[1, 2, 3].map((p) => (
-              <button
-                key={p}
-                className="w-7 h-7 rounded text-xs font-medium"
-                style={{
-                  background: p === 1 ? "#1D2938" : "transparent",
-                  color: p === 1 ? "#F4F7FA" : "#627083",
-                }}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
+          <span className="text-[11px] font-mono text-[#42D392] flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse" />
+            LIVE TELEMETRY STREAM
+          </span>
         </div>
       </div>
+
+      {/* Investigation Drawer / Modal */}
+      <IncidentDrawer
+        incident={selectedIncident}
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onIncidentUpdated={handleIncidentUpdated}
+      />
     </div>
-  );
+  )
 }

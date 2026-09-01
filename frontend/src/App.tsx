@@ -1,79 +1,102 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react"
 
-import Overview from "./screens/Overview";
-import Incidents from "./screens/Incidents";
-import IncidentInvestigation from "./screens/IncidentInvestigation";
-import AIAnalyst from "./screens/AIAnalyst";
-import DetectionRules from "./screens/DetectionRules";
-import LiveEvents from "./screens/LiveEvents";
-import ThreatIntelligence from "./screens/ThreatIntelligence";
-import Vulnerabilities from "./screens/Vulnerabilities";
-import MitreAttack from "./screens/MitreAttack";
-import ResponseCenter from "./screens/ResponseCenter";
-import SystemHealth from "./screens/SystemHealth";
-import AuditLog from "./screens/AuditLog";
+import Overview from "./screens/Overview"
 
-import { CustomCursor } from "./components/CustomCursor";
+import Incidents from "./screens/Incidents"
 
-type Screen =
-  | "overview"
-  | "incidents"
-  | "incident-investigation"
-  | "ai-analyst"
-  | "detection-rules"
-  | "live-events"
-  | "threat-intel"
-  | "vulnerabilities"
-  | "mitre"
-  | "response"
-  | "audit-log"
-  | "health";
+import IncidentInvestigation from "./screens/IncidentInvestigation"
+
+import AIAnalyst from "./screens/AIAnalyst"
+
+import DetectionRules from "./screens/DetectionRules"
+
+import LiveEvents from "./screens/LiveEvents"
+
+import ThreatIntelligence from "./screens/ThreatIntelligence"
+
+import Vulnerabilities from "./screens/Vulnerabilities"
+
+import MitreAttack from "./screens/MitreAttack"
+
+import ResponseCenter from "./screens/ResponseCenter"
+
+import SystemHealth from "./screens/SystemHealth"
+
+import AuditLog from "./screens/AuditLog"
+
+import { CustomCursor } from "./components/CustomCursor"
+
+type Screen = "overview" | "incidents" | "incident-investigation" | "ai-analyst" | "detection-rules" | "live-events" | "threat-intel" | "vulnerabilities" | "mitre" | "response" | "audit-log" | "health"
 
 interface NavItem {
-  group?: string;
-  id?: Screen;
-  label?: string;
-  indent?: boolean;
+  group?: string
+
+  id?: Screen
+
+  label?: string
+
+  indent?: boolean
 }
 
 const navItems: NavItem[] = [
   { id: "overview", label: "Overview" },
 
   { group: "OPERATIONS" },
+
   { id: "incidents", label: "Incidents", indent: true },
+
   { id: "detection-rules", label: "Detections", indent: true },
+
   { id: "live-events", label: "Live Events", indent: true },
 
   { group: "INTELLIGENCE" },
+
   { id: "threat-intel", label: "Threat Intelligence", indent: true },
+
   { id: "vulnerabilities", label: "Vulnerabilities", indent: true },
+
   { id: "mitre", label: "MITRE ATT&CK", indent: true },
 
   { group: "ANALYSIS" },
+
   { id: "ai-analyst", label: "AI Analyst", indent: true },
 
   { group: "RESPONSE" },
+
   { id: "response", label: "Playbooks", indent: true },
+
   { id: "audit-log", label: "Audit Log", indent: true },
 
   { group: "SYSTEM" },
+
   { id: "health", label: "Health", indent: true },
-];
+]
 
 const pageTitles: Record<Screen, string> = {
   overview: "Security Overview",
+
   incidents: "Incidents",
+
   "incident-investigation": "Incident Investigation",
+
   "ai-analyst": "AI Analyst",
+
   "detection-rules": "Detection Rules",
+
   "live-events": "Live Event Stream",
+
   "threat-intel": "Threat Intelligence",
+
   vulnerabilities: "Vulnerabilities",
+
   mitre: "MITRE ATT&CK",
+
   response: "Response Center",
+
   "audit-log": "Audit Log",
+
   health: "System Health",
-};
+}
 
 /* =========================================================
    SENTINEL EMBLEM
@@ -85,17 +108,28 @@ function SentinelEmblem({ size = 40 }: { size?: number }) {
     <div
       style={{
         width: size,
+
         height: size,
+
         minWidth: size,
+
         minHeight: size,
+
         borderRadius: Math.max(7, size * 0.2),
+
         display: "flex",
+
         alignItems: "center",
+
         justifyContent: "center",
+
         overflow: "hidden",
+
         background:
           "linear-gradient(145deg, rgba(86,180,255,0.16), rgba(147, 148, 159, 0.08))",
+
         border: "1px solid rgba(124,140,255,0.32)",
+
         boxShadow:
           "0 0 18px rgba(86,180,255,0.18), inset 0 0 18px rgba(124,140,255,0.06)",
       }}
@@ -105,14 +139,17 @@ function SentinelEmblem({ size = 40 }: { size?: number }) {
         alt="Sentinel emblem"
         style={{
           width: "82%",
+
           height: "82%",
+
           objectFit: "contain",
+
           display: "block",
         }}
       />
     </div>
-  );
-}/* =========================================================
+  )
+} /* =========================================================
    SIDEBAR LOGO
    ========================================================= */
 
@@ -122,6 +159,7 @@ function SentinelLogo() {
       className="px-5 py-4 flex-shrink-0"
       style={{
         borderBottom: "1px solid #1D2938",
+
         background: "#0D131D",
       }}
     >
@@ -129,6 +167,7 @@ function SentinelLogo() {
         className="flex items-center"
         style={{
           minHeight: "42px",
+
           gap: "12px",
         }}
       >
@@ -137,20 +176,30 @@ function SentinelLogo() {
         <div
           style={{
             display: "flex",
+
             flexDirection: "column",
+
             justifyContent: "center",
+
             lineHeight: "1",
+
             minWidth: 0,
           }}
         >
           <span
             style={{
               display: "block",
+
               color: "#F4F7FA",
+
               fontSize: "14px",
+
               fontWeight: 700,
+
               letterSpacing: "-0.02em",
+
               lineHeight: "18px",
+
               whiteSpace: "nowrap",
             }}
           >
@@ -160,13 +209,20 @@ function SentinelLogo() {
           <span
             style={{
               display: "block",
+
               marginTop: "3px",
+
               color: "#627083",
+
               fontSize: "10px",
+
               fontFamily:
                 "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+
               letterSpacing: "0.02em",
+
               lineHeight: "12px",
+
               whiteSpace: "nowrap",
             }}
           >
@@ -175,7 +231,7 @@ function SentinelLogo() {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 /* =========================================================
@@ -183,8 +239,9 @@ function SentinelLogo() {
    ========================================================= */
 
 interface SidebarProps {
-  current: Screen;
-  onNavigate: (s: Screen) => void;
+  current: Screen
+
+  onNavigate: (s: Screen) => void
 }
 
 function Sidebar({ current, onNavigate }: SidebarProps) {
@@ -193,7 +250,9 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
       className="flex flex-col h-screen flex-shrink-0"
       style={{
         width: "240px",
+
         background: "#0D131D",
+
         borderRight: "1px solid #1D2938",
       }}
     >
@@ -212,20 +271,22 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
               >
                 {item.group}
               </div>
-            );
+            )
           }
 
           if (!item.id || !item.label) {
-            return null;
+            return null
           }
 
           const navItem = item as {
-            id: Screen;
-            label: string;
-            indent?: boolean;
-          };
+            id: Screen
 
-          const isActive = current === navItem.id;
+            label: string
+
+            indent?: boolean
+          }
+
+          const isActive = current === navItem.id
 
           return (
             <button
@@ -237,23 +298,25 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
               className="w-full text-left flex items-center gap-2.5 py-2 transition-colors duration-150 relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
               style={{
                 paddingLeft: navItem.indent ? "28px" : "20px",
+
                 paddingRight: "20px",
+
                 color: isActive ? "#F4F7FA" : "#627083",
-                background: isActive
-                  ? "rgba(86,180,255,0.035)"
-                  : "transparent",
+
+                background: isActive ? "rgba(86,180,255,0.035)" : "transparent",
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.color = "#9AA8B8";
-                  e.currentTarget.style.background =
-                    "rgba(255,255,255,0.018)";
+                  e.currentTarget.style.color = "#9AA8B8"
+
+                  e.currentTarget.style.background = "rgba(255,255,255,0.018)"
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.color = "#627083";
-                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "#627083"
+
+                  e.currentTarget.style.background = "transparent"
                 }
               }}
             >
@@ -262,6 +325,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
                   className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r"
                   style={{
                     background: "#56B4FF",
+
                     boxShadow: "0 0 8px rgba(86,180,255,0.65)",
                   }}
                 />
@@ -450,6 +514,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
                   className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
                   style={{
                     background: "rgba(255,77,94,0.12)",
+
                     color: "#FF4D5E",
                   }}
                 >
@@ -463,7 +528,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
                 </span>
               )}
             </button>
-          );
+          )
         })}
       </nav>
 
@@ -491,24 +556,29 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
           {[
             {
               label: "API",
+
               status: "OPERATIONAL",
+
               color: "#42D392",
             },
+
             {
               label: "WS",
+
               status: "CONNECTED",
+
               color: "#42D392",
             },
+
             {
               label: "DB",
+
               status: "OPERATIONAL",
+
               color: "#42D392",
             },
           ].map((s) => (
-            <div
-              key={s.label}
-              className="flex items-center justify-between"
-            >
+            <div key={s.label} className="flex items-center justify-between">
               <span
                 className="font-mono text-[11px]"
                 style={{
@@ -540,7 +610,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
         </div>
       </div>
     </aside>
-  );
+  )
 }
 
 /* =========================================================
@@ -548,78 +618,102 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
    ========================================================= */
 
 interface TopBarProps {
-  title: string;
-  onNavigate: (s: Screen) => void;
+  title: string
+
+  onNavigate: (s: Screen) => void
 }
 
 function TopBar({ title, onNavigate }: TopBarProps) {
-  const [searchVal, setSearchVal] = useState("");
-  const [showNotifications, setShowNotifications] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
+  const [searchVal, setSearchVal] = useState("")
+
+  const [showNotifications, setShowNotifications] = useState(false)
+
+  const notifRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!showNotifications) return;
+    if (!showNotifications) return
 
     const handleClickOutside = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setShowNotifications(false);
+        setShowNotifications(false)
       }
-    };
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setShowNotifications(false);
+        setShowNotifications(false)
       }
-    };
+    }
 
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside)
+
+    document.addEventListener("keydown", handleKeyDown)
 
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [showNotifications]);
+      document.removeEventListener("mousedown", handleClickOutside)
+
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [showNotifications])
 
   const notifications = [
     {
       title: "Credential Attack — CRITICAL",
+
       sub: "INC-00842 requires investigation",
+
       color: "#FF4D5E",
+
       time: "2m ago",
+
       onClick: () => {
-        onNavigate("incident-investigation");
-        setShowNotifications(false);
+        onNavigate("incident-investigation")
+
+        setShowNotifications(false)
       },
     },
+
     {
       title: "New KEV published",
+
       sub: "CVE-2026-11234 added to CISA catalog",
+
       color: "#FF8A4C",
+
       time: "12m ago",
+
       onClick: () => {
-        onNavigate("threat-intel");
-        setShowNotifications(false);
+        onNavigate("threat-intel")
+
+        setShowNotifications(false)
       },
     },
+
     {
       title: "AI Analysis complete",
+
       sub: "High-confidence assessment for INC-00842",
+
       color: "#7C8CFF",
+
       time: "14m ago",
+
       onClick: () => {
-        onNavigate("ai-analyst");
-        setShowNotifications(false);
+        onNavigate("ai-analyst")
+
+        setShowNotifications(false)
       },
     },
-  ];
+  ]
 
   return (
     <header
       className="flex items-center gap-4 px-6 flex-shrink-0"
       style={{
         height: "56px",
+
         background: "#0D131D",
+
         borderBottom: "1px solid #1D2938",
       }}
     >
@@ -660,16 +754,19 @@ function TopBar({ title, onNavigate }: TopBarProps) {
           onChange={(e) => setSearchVal(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
-              setSearchVal("");
-              e.currentTarget.blur();
+              setSearchVal("")
+
+              e.currentTarget.blur()
             } else if (e.key === "Enter") {
-              e.preventDefault();
+              e.preventDefault()
             }
           }}
           className="w-full pl-9 pr-3 py-1.5 rounded-lg text-sm outline-none transition-all focus-visible:ring-1 focus-visible:ring-[#56B4FF]/40"
           style={{
             background: "#111925",
+
             border: "1px solid #1D2938",
+
             color: "#F4F7FA",
           }}
         />
@@ -681,7 +778,9 @@ function TopBar({ title, onNavigate }: TopBarProps) {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold"
           style={{
             background: "rgba(244,201,93,0.04)",
+
             color: "#F4C95D",
+
             border: "1px solid rgba(244,201,93,0.15)",
           }}
         >
@@ -694,28 +793,23 @@ function TopBar({ title, onNavigate }: TopBarProps) {
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs"
           style={{
             background: "rgba(66,211,146,0.06)",
+
             color: "#42D392",
           }}
         >
           <div className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse" />
 
-          <span className="font-mono text-[11px]">
-            LIVE
-          </span>
+          <span className="font-mono text-[11px]">LIVE</span>
         </div>
 
         {/* Notifications */}
         <div className="relative" ref={notifRef}>
           <button
-            onClick={() =>
-              setShowNotifications(!showNotifications)
-            }
+            onClick={() => setShowNotifications(!showNotifications)}
             type="button"
             className="relative w-8 h-8 flex items-center justify-center rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
             style={{
-              background: showNotifications
-                ? "#1D2938"
-                : "transparent",
+              background: showNotifications ? "#1D2938" : "transparent",
             }}
             aria-label="Notifications"
             aria-expanded={showNotifications}
@@ -742,6 +836,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
               className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center"
               style={{
                 background: "#FF4D5E",
+
                 color: "#fff",
               }}
             >
@@ -756,8 +851,11 @@ function TopBar({ title, onNavigate }: TopBarProps) {
               className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden shadow-2xl z-50"
               style={{
                 background: "#0D131D",
+
                 border: "1px solid #1D2938",
+
                 width: "280px",
+
                 boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
               }}
             >
@@ -790,12 +888,10 @@ function TopBar({ title, onNavigate }: TopBarProps) {
                   }}
                   onClick={n.onClick}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background =
-                      "#1D293840";
+                    e.currentTarget.style.background = "#1D293840"
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background =
-                      "transparent";
+                    e.currentTarget.style.background = "transparent"
                   }}
                 >
                   <div
@@ -845,7 +941,9 @@ function TopBar({ title, onNavigate }: TopBarProps) {
           style={{
             background:
               "linear-gradient(135deg, rgba(86,180,255,0.18), rgba(124,140,255,0.24))",
+
             color: "#7C8CFF",
+
             border: "1px solid rgba(124,140,255,0.2)",
           }}
         >
@@ -853,7 +951,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
         </div>
       </div>
     </header>
-  );
+  )
 }
 
 /* =========================================================
@@ -862,33 +960,44 @@ function TopBar({ title, onNavigate }: TopBarProps) {
 
 function MobileNav({
   current,
+
   onNavigate,
 }: {
-  current: Screen;
-  onNavigate: (s: Screen) => void;
+  current: Screen
+
+  onNavigate: (s: Screen) => void
 }) {
   const items: { id: Screen; label: string }[] = [
     {
       id: "overview",
+
       label: "Overview",
     },
+
     {
       id: "incidents",
+
       label: "Incidents",
     },
+
     {
       id: "live-events",
+
       label: "Events",
     },
+
     {
       id: "threat-intel",
+
       label: "Intel",
     },
+
     {
       id: "health",
+
       label: "System",
     },
-  ];
+  ]
 
   const icons: Record<string, React.ReactNode> = {
     overview: (
@@ -970,20 +1079,22 @@ function MobileNav({
         />
       </svg>
     ),
-  };
+  }
 
   return (
     <nav
       className="flex items-center justify-around px-2 flex-shrink-0"
       style={{
         height: "60px",
+
         background: "#0D131D",
+
         borderTop: "1px solid #1D2938",
       }}
       aria-label="Mobile Navigation"
     >
       {items.map((item) => {
-        const isActive = current === item.id;
+        const isActive = current === item.id
 
         return (
           <button
@@ -995,9 +1106,8 @@ function MobileNav({
             className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
             style={{
               color: isActive ? "#56B4FF" : "#627083",
-              background: isActive
-                ? "rgba(86,180,255,0.06)"
-                : "transparent",
+
+              background: isActive ? "rgba(86,180,255,0.06)" : "transparent",
             }}
           >
             {icons[item.id]}
@@ -1006,10 +1116,10 @@ function MobileNav({
               {item.label}
             </span>
           </button>
-        );
+        )
       })}
     </nav>
-  );
+  )
 }
 
 /* =========================================================
@@ -1017,94 +1127,84 @@ function MobileNav({
    ========================================================= */
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("overview");
+  const [screen, setScreen] = useState<Screen>("overview")
 
   const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined"
-      ? window.innerWidth < 768
-      : false
-  );
+    typeof window !== "undefined" ? window.innerWidth < 768 : false,
+  )
 
   useEffect(() => {
     const handler = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+      setIsMobile(window.innerWidth < 768)
+    }
 
-    window.addEventListener("resize", handler);
+    window.addEventListener("resize", handler)
 
     return () => {
-      window.removeEventListener("resize", handler);
-    };
-  }, []);
+      window.removeEventListener("resize", handler)
+    }
+  }, [])
 
   const navigate = (s: string) => {
-    setScreen(s as Screen);
-  };
+    setScreen(s as Screen)
+  }
 
   const renderScreen = () => {
     switch (screen) {
       case "overview":
-        return <Overview onNavigate={navigate} />;
+        return <Overview onNavigate={navigate} />
 
       case "incidents":
-        return <Incidents onNavigate={navigate} />;
+        return <Incidents onNavigate={navigate} />
 
       case "incident-investigation":
-        return (
-          <IncidentInvestigation
-            onNavigate={navigate}
-          />
-        );
+        return <IncidentInvestigation onNavigate={navigate} />
 
       case "ai-analyst":
-        return <AIAnalyst onNavigate={navigate} />;
+        return <AIAnalyst onNavigate={navigate} />
 
       case "detection-rules":
-        return <DetectionRules />;
+        return <DetectionRules />
 
       case "live-events":
-        return <LiveEvents />;
+        return <LiveEvents />
 
       case "threat-intel":
-        return <ThreatIntelligence />;
+        return <ThreatIntelligence />
 
       case "vulnerabilities":
-        return <Vulnerabilities />;
+        return <Vulnerabilities />
 
       case "mitre":
-        return <MitreAttack />;
+        return <MitreAttack />
 
       case "response":
-        return <ResponseCenter />;
+        return <ResponseCenter />
 
       case "health":
-        return <SystemHealth />;
+        return <SystemHealth />
 
       case "audit-log":
-        return <AuditLog />;
+        return <AuditLog />
 
       default:
-        return <Overview onNavigate={navigate} />;
+        return <Overview onNavigate={navigate} />
     }
-  };
+  }
 
   return (
     <div
       className="flex h-screen overflow-hidden"
       style={{
         background: "#070B12",
+
         fontFamily:
           "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       }}
     >
       <CustomCursor />
 
-      {!isMobile && (
-        <Sidebar
-          current={screen}
-          onNavigate={setScreen}
-        />
-      )}
+      {!isMobile && <Sidebar current={screen} onNavigate={setScreen} />}
 
       <div className="flex flex-col flex-1 overflow-hidden">
         {isMobile ? (
@@ -1112,7 +1212,9 @@ export default function App() {
             className="flex items-center justify-between px-4 flex-shrink-0"
             style={{
               height: "52px",
+
               background: "#0D131D",
+
               borderBottom: "1px solid #1D2938",
             }}
           >
@@ -1128,9 +1230,7 @@ export default function App() {
                 SENTINEL
               </span>
 
-              <span
-                className="text-[10px] font-mono text-[#627083] hidden min-[360px]:inline truncate"
-              >
+              <span className="text-[10px] font-mono text-[#627083] hidden min-[360px]:inline truncate">
                 SOC v2.2
               </span>
             </div>
@@ -1140,9 +1240,10 @@ export default function App() {
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold"
                 style={{
                   background: "rgba(244,201,93,0.04)",
+
                   color: "#F4C95D",
-                  border:
-                    "1px solid rgba(244,201,93,0.15)",
+
+                  border: "1px solid rgba(244,201,93,0.15)",
                 }}
               >
                 ◆ TRAINING
@@ -1152,10 +1253,7 @@ export default function App() {
             </div>
           </header>
         ) : (
-          <TopBar
-            title={pageTitles[screen]}
-            onNavigate={setScreen}
-          />
+          <TopBar title={pageTitles[screen]} onNavigate={setScreen} />
         )}
 
         <main
@@ -1163,19 +1261,15 @@ export default function App() {
           className="flex-1 overflow-y-auto screen-enter"
           style={{
             padding: isMobile ? "16px" : "32px",
+
             background: "#070B12",
           }}
         >
           {renderScreen()}
         </main>
 
-        {isMobile && (
-          <MobileNav
-            current={screen}
-            onNavigate={setScreen}
-          />
-        )}
+        {isMobile && <MobileNav current={screen} onNavigate={setScreen} />}
       </div>
     </div>
-  );
+  )
 }

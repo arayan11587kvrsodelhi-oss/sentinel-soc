@@ -1,288 +1,852 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo, type KeyboardEvent } from "react"
+import {
+  VulnerabilityItem,
+  getVulnerabilities,
+  getKevCatalog,
+  type KevItem,
+} from "../lib/sentinel-api"
+import { ProvenanceBadge } from "../components/ProvenanceBadge"
 
-const vulns = [
-  { cve: "CVE-2026-11234", cvss: 9.8, kev: true, asset: "API-01", risk: "CRITICAL", status: "OPEN", vendor: "Apache", product: "HTTP Server" },
-  { cve: "CVE-2026-10891", cvss: 9.1, kev: true, asset: "DC-01", risk: "CRITICAL", status: "OPEN", vendor: "Microsoft", product: "Windows Server" },
-  { cve: "CVE-2026-08774", cvss: 8.1, kev: true, asset: "VMWARE-01", risk: "CRITICAL", status: "IN_PROGRESS", vendor: "VMware", product: "vCenter" },
-  { cve: "CVE-2026-09234", cvss: 8.6, kev: false, asset: "WEB-03", risk: "HIGH", status: "OPEN", vendor: "OpenSSL", product: "OpenSSL 3.x" },
-  { cve: "CVE-2026-07441", cvss: 7.8, kev: false, asset: "DB-01", risk: "HIGH", status: "IN_PROGRESS", vendor: "Linux", product: "Kernel 6.x" },
-  { cve: "CVE-2026-07102", cvss: 7.5, kev: false, asset: "HOST-04", risk: "HIGH", status: "OPEN", vendor: "Python", product: "Python 3.12" },
-  { cve: "CVE-2026-06218", cvss: 7.5, kev: false, asset: "WEB-01", risk: "HIGH", status: "OPEN", vendor: "NGINX", product: "nginx 1.25" },
-  { cve: "CVE-2026-05884", cvss: 6.8, kev: false, asset: "DB-02", risk: "MEDIUM", status: "OPEN", vendor: "PostgreSQL", product: "PostgreSQL 16" },
-  { cve: "CVE-2026-04901", cvss: 6.4, kev: false, asset: "HOST-09", risk: "MEDIUM", status: "ACCEPTED", vendor: "curl", product: "curl 8.x" },
-  { cve: "CVE-2026-04217", cvss: 5.9, kev: false, asset: "API-02", risk: "MEDIUM", status: "IN_PROGRESS", vendor: "Express.js", product: "Express 4.x" },
-  { cve: "CVE-2026-03512", cvss: 4.3, kev: false, asset: "WEB-02", risk: "LOW", status: "OPEN", vendor: "jQuery", product: "jQuery 3.x" },
-  { cve: "CVE-2026-02881", cvss: 3.7, kev: false, asset: "HOST-11", risk: "LOW", status: "ACCEPTED", vendor: "OpenSSH", product: "OpenSSH 9.x" },
-];
-
+const severityOrder = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const
 const riskColor: Record<string, string> = {
   CRITICAL: "#FF4D5E",
   HIGH: "#FF8A4C",
   MEDIUM: "#F4C95D",
   LOW: "#56B4FF",
-};
+  INFO: "#7AA2FF",
+}
 
-const statusConfig: Record<string, { color: string; label: string }> = {
-  OPEN: { color: "#FF4D5E", label: "OPEN" },
-  IN_PROGRESS: { color: "#FF8A4C", label: "IN PROGRESS" },
-  ACCEPTED: { color: "#627083", label: "ACCEPTED" },
-  RESOLVED: { color: "#42D392", label: "RESOLVED" },
-};
+function toSeverityRank(value: string) {
+  const index = severityOrder.indexOf(value as typeof severityOrder[number])
+  return index === -1 ? -1 : index
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "Not provided"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function getVendorProductLabel(
+  item: VulnerabilityItem,
+  kevItem?: KevItem,
+): string {
+  if (kevItem?.vendorProject || kevItem?.product) {
+    return [kevItem.vendorProject, kevItem.product].filter(Boolean).join(" ")
+  }
+  if (item.affected_products && item.affected_products.length > 0) {
+    return item.affected_products[0]
+  }
+  return "General enterprise asset"
+}
 
 export default function Vulnerabilities() {
-  const [sortField, setSortField] = useState<"cvss" | "risk">("cvss");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [riskFilter, setRiskFilter] = useState("ALL");
-  const [kevOnly, setKevOnly] = useState(false);
+  const [vulns, setVulns] = useState<VulnerabilityItem[]>([])
+  const [kevCatalog, setKevCatalog] = useState<KevItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<"severity" | "newest" | "cve">(
+    "severity",
+  )
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  const [riskFilter, setRiskFilter] = useState("ALL")
+  const [statusFilter, setStatusFilter] =
+    useState<"ALL" | "KNOWN_EXPLOITED" | "GENERAL">("ALL")
+  const [kevOnly, setKevOnly] = useState(false)
+  const [search, setSearch] = useState("")
+  const [dataSource, setDataSource] = useState("CACHED_NVD")
+  const [selectedVuln, setSelectedVuln] = useState<VulnerabilityItem | null>(
+    null,
+  )
 
-  const handleSort = (field: "cvss" | "risk") => {
-    if (sortField === field) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDir("desc");
-    }
-  };
+  async function fetchVulns() {
+    setIsLoading(true)
+    setError(null)
 
-  const sorted = [...vulns]
-    .filter((v) => {
-      if (riskFilter !== "ALL" && v.risk !== riskFilter) return false;
-      if (kevOnly && !v.kev) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortField === "cvss") {
-        return sortDir === "desc" ? b.cvss - a.cvss : a.cvss - b.cvss;
+    try {
+      const [vulnResult, kevResult] = await Promise.allSettled([
+        getVulnerabilities({ limit: 120 }),
+        getKevCatalog({ limit: 200 }),
+      ])
+
+      const nextVulns =
+        vulnResult.status === "fulfilled"
+          ? (vulnResult.value.vulnerabilities ?? [])
+          : []
+      const nextKev =
+        kevResult.status === "fulfilled"
+          ? (kevResult.value.vulnerabilities ?? [])
+          : []
+
+      setVulns(nextVulns)
+      setKevCatalog(nextKev)
+
+      const source =
+        vulnResult.status === "fulfilled"
+          ? vulnResult.value.data_source || "LIVE_NVD"
+          : "CACHED_NVD"
+      setDataSource(source)
+
+      const hasData = nextVulns.length > 0 || nextKev.length > 0
+      if (!hasData) {
+        setError(
+          "No vulnerability intelligence is available from the current data feed.",
+        )
       }
-      const order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-      const ai = order.indexOf(a.risk);
-      const bi = order.indexOf(b.risk);
-      return sortDir === "desc" ? ai - bi : bi - ai;
-    });
 
-  const critCount = vulns.filter((v) => v.risk === "CRITICAL").length;
-  const kevCount = vulns.filter((v) => v.kev).length;
+      if (vulnResult.status === "rejected" && kevResult.status === "rejected") {
+        throw new Error("Unable to load NVD and KEV feeds.")
+      }
+    } catch (err) {
+      console.warn("Failed to load vulnerabilities:", err)
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load vulnerability intelligence.",
+      )
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void fetchVulns()
+  }, [])
+
+  const kevLookup = useMemo(
+    () => new Map(kevCatalog.map((item) => [item.cveID.toUpperCase(), item])),
+    [kevCatalog],
+  )
+
+  const handleSort = (field: "severity" | "newest" | "cve") => {
+    if (sortField === field) {
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"))
+      return
+    }
+
+    setSortField(field)
+    setSortDir(field === "cve" ? "asc" : "desc")
+  }
+
+  const filteredAndSorted = useMemo(() => {
+    return [...vulns]
+      .filter((v) => {
+        const q = search.trim().toLowerCase()
+        const kevMeta = kevLookup.get(v.id.toUpperCase())
+        const matchSearch =
+          !q ||
+          v.id.toLowerCase().includes(q) ||
+          v.description.toLowerCase().includes(q) ||
+          (kevMeta?.vulnerabilityName || "").toLowerCase().includes(q) ||
+          (v.affected_products ?? []).some((p) => p.toLowerCase().includes(q))
+
+        const matchRisk = riskFilter === "ALL" || v.severity === riskFilter
+        const matchStatus =
+          statusFilter === "ALL" ||
+          (statusFilter === "KNOWN_EXPLOITED" && v.is_kev) ||
+          (statusFilter === "GENERAL" && !v.is_kev)
+        const matchKev = !kevOnly || v.is_kev
+
+        return matchSearch && matchRisk && matchStatus && matchKev
+      })
+      .sort((a, b) => {
+        if (sortField === "cve") {
+          return sortDir === "desc"
+            ? b.id.localeCompare(a.id)
+            : a.id.localeCompare(b.id)
+        }
+
+        if (sortField === "newest") {
+          const aTime = new Date(a.modified || a.published || 0).getTime()
+          const bTime = new Date(b.modified || b.published || 0).getTime()
+          return sortDir === "desc" ? bTime - aTime : aTime - bTime
+        }
+
+        const severityRankA = toSeverityRank(a.severity || "MEDIUM")
+        const severityRankB = toSeverityRank(b.severity || "MEDIUM")
+        const diff = severityRankA - severityRankB
+        if (diff !== 0) {
+          return sortDir === "desc" ? -diff : diff
+        }
+
+        const cvssA = a.cvss ?? 0
+        const cvssB = b.cvss ?? 0
+        return sortDir === "desc" ? cvssB - cvssA : cvssA - cvssB
+      })
+  }, [
+    vulns,
+    search,
+    riskFilter,
+    statusFilter,
+    kevOnly,
+    sortField,
+    sortDir,
+    kevLookup,
+  ])
+
+  const severityCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      CRITICAL: 0,
+      HIGH: 0,
+      MEDIUM: 0,
+      LOW: 0,
+    }
+    vulns.forEach((v) => {
+      if (counts[v.severity]) {
+        counts[v.severity] += 1
+      } else if (
+        v.severity === "CRITICAL" ||
+        v.severity === "HIGH" ||
+        v.severity === "MEDIUM" ||
+        v.severity === "LOW"
+      ) {
+        counts[v.severity] = 1
+      }
+    })
+    return counts
+  }, [vulns])
+
+  const maxSeverityCount = Math.max(...Object.values(severityCounts), 1)
+  const totalSeverity = Object.values(severityCounts).reduce(
+    (sum, value) => sum + value,
+    0,
+  )
+  const kevCount = vulns.filter((v) => v.is_kev).length
+  const pendingRemediation = vulns.filter(
+    (v) => v.is_kev && v.kev_details?.due_date,
+  ).length
+  const avgCvss =
+    vulns.length > 0
+      ? (
+          vulns.reduce((sum, item) => sum + (item.cvss ?? 0), 0) / vulns.length
+        ).toFixed(1)
+      : "0.0"
+
+  const immediateAttention = useMemo(
+    () =>
+      [...vulns]
+        .filter(
+          (v) =>
+            v.is_kev && (v.severity === "CRITICAL" || v.severity === "HIGH"),
+        )
+        .sort((a, b) => {
+          const priorityA = (a.cvss ?? 0) + (a.is_kev ? 10 : 0)
+          const priorityB = (b.cvss ?? 0) + (b.is_kev ? 10 : 0)
+          return priorityB - priorityA
+        })
+        .slice(0, 4),
+    [vulns],
+  )
+
+  const summaryCards = [
+    {
+      label: "TOTAL VULNERABILITIES",
+      value: vulns.length,
+      color: "#F4F7FA",
+      sub: "Live NVD catalog",
+    },
+    {
+      label: "CRITICAL",
+      value: severityCounts.CRITICAL,
+      color: "#FF4D5E",
+      sub: "CVSS >= 9.0",
+    },
+    {
+      label: "HIGH",
+      value: severityCounts.HIGH,
+      color: "#FF8A4C",
+      sub: "Priority exposure",
+    },
+    {
+      label: "MEDIUM",
+      value: severityCounts.MEDIUM,
+      color: "#F4C95D",
+      sub: "Monitor and patch",
+    },
+    {
+      label: "LOW",
+      value: severityCounts.LOW,
+      color: "#56B4FF",
+      sub: "Lower urgency",
+    },
+    {
+      label: "KEV / EXPLOITED",
+      value: kevCount,
+      color: "#FF8A4C",
+      sub: "CISA exploited",
+    },
+    {
+      label: "REMEDIATION STATUS",
+      value: pendingRemediation,
+      color: "#7AA2FF",
+      sub: "Due-date tracked",
+    },
+  ]
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold" style={{ color: "#F4F7FA" }}>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#627083]">
+              Vulnerability intelligence & exposure
+            </span>
+            <ProvenanceBadge type="live" />
+          </div>
+          <h1 className="text-xl font-semibold text-[#F4F7FA]">
             Vulnerabilities
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "#9AA8B8" }}>
-            {vulns.length} vulnerabilities tracked across {new Set(vulns.map((v) => v.asset)).size} assets
+          <p className="mt-1 text-sm text-[#9AA8B8]">
+            {vulns.length} records tracked • Feed: {dataSource}
           </p>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "TOTAL", value: vulns.length, color: "#F4F7FA" },
-          { label: "CRITICAL", value: critCount, color: "#FF4D5E" },
-          { label: "KEV", value: kevCount, color: "#FF8A4C", sub: "Known Exploited" },
-          { label: "IN PROGRESS", value: vulns.filter((v) => v.status === "IN_PROGRESS").length, color: "#F4C95D" },
-        ].map((card) => (
-          <div key={card.label} className="rounded-xl p-4" style={{ background: "#111925", border: "1px solid #1D2938" }}>
-            <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "#627083" }}>
-              {card.label}
+      {isLoading && (
+        <div className="rounded-xl border border-[#1D2938] bg-[#111925] p-8 text-center text-sm text-[#9AA8B8]">
+          Loading vulnerability intelligence…
+        </div>
+      )}
+
+      {!isLoading && error && (
+        <div
+          className="rounded-xl border border-[#FF4D5E33] bg-[#0F1720] p-6 text-[#F4F7FA]"
+          style={{ boxShadow: "inset 0 0 0 1px rgba(255,77,94,0.08)" }}
+        >
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#FF4D5E]">
+            API error
+          </div>
+          <h2 className="mt-2 text-lg font-semibold">
+            Unable to load the current vulnerability feed
+          </h2>
+          <p className="mt-2 text-sm text-[#9AA8B8]">{error}</p>
+          <button
+            type="button"
+            onClick={() => void fetchVulns()}
+            className="mt-4 rounded-lg border border-[#1D2938] bg-[#111925] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#F4F7FA]"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !error && (
+        <>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map((card, index) => (
+              <div
+                key={card.label}
+                className="rounded-xl border border-[#1D2938] bg-[#111925] p-4"
+                style={{
+                  transform: index === 0 ? undefined : undefined,
+                }}
+              >
+                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#627083]">
+                  {card.label}
+                </div>
+                <div
+                  className="mt-2 text-2xl font-semibold font-mono tabular-nums"
+                  style={{ color: card.color }}
+                >
+                  {card.value}
+                </div>
+                <div className="mt-1 text-[11px] text-[#627083]">
+                  {card.sub}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.5fr_0.8fr]">
+            <div className="rounded-xl border border-[#1D2938] bg-[#0D131D] p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#627083]">
+                    Severity distribution
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-[#F4F7FA]">
+                    Live mix of exploited and general exposure
+                  </div>
+                </div>
+                <div className="text-xs text-[#627083]">
+                  {totalSeverity} total
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {severityOrder.map((severity) => {
+                  const count = severityCounts[severity] || 0
+                  const pct = (count / maxSeverityCount) * 100
+                  return (
+                    <div key={severity}>
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-[#9AA8B8]">
+                        <span
+                          className="font-medium"
+                          style={{ color: riskColor[severity] }}
+                        >
+                          {severity}
+                        </span>
+                        <span>{count}</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-[#111925]">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${pct}%`,
+                            background: riskColor[severity],
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-            <div className="text-2xl font-semibold font-mono tabular-nums" style={{ color: card.color }}>
-              {card.value}
+
+            <div className="rounded-xl border border-[#FF4D5E22] bg-[#111925] p-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#FF4D5E]">
+                Immediate attention
+              </div>
+              <div className="mt-3 space-y-3">
+                {immediateAttention.length === 0 ? (
+                  <div className="text-sm text-[#9AA8B8]">
+                    No critical KEV issues are currently active.
+                  </div>
+                ) : (
+                  immediateAttention.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedVuln(item)}
+                      className="w-full rounded-lg border border-[#1D2938] bg-[#0D131D] p-3 text-left transition-colors hover:border-[#FF4D5E55]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-semibold text-[#FF8A4C]">
+                          {item.id}
+                        </span>
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                          style={{
+                            background: "rgba(255,77,94,0.12)",
+                            color: "#FF4D5E",
+                          }}
+                        >
+                          KEV
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm font-medium text-[#F4F7FA]">
+                        {item.description}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-[#9AA8B8]">
+                        <span>{item.severity}</span>
+                        <span>{item.cvss?.toFixed(1) ?? "N/A"}</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
-            {(card as { sub?: string }).sub && (
-              <div className="text-xs mt-1" style={{ color: "#627083" }}>
-                {(card as { sub?: string }).sub}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#1D2938] bg-[#0D131D] p-3">
+            <div className="relative min-w-[180px] flex-1 max-w-sm">
+              <svg
+                className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#627083]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="6" />
+                <path d="m16 16 5 5" />
+              </svg>
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search CVE ID, title, product…"
+                className="w-full rounded-lg border border-[#1D2938] bg-[#111925] py-1.5 pl-9 pr-3 text-xs text-[#F4F7FA] outline-none transition-colors focus:border-[#56B4FF]"
+                aria-label="Search vulnerabilities"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-[#627083]">Severity:</span>
+              {["ALL", ...severityOrder].map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setRiskFilter(level)}
+                  className="rounded px-2.5 py-1 text-[11px] font-medium transition-colors"
+                  style={{
+                    background:
+                      riskFilter === level ? "#1D2938" : "transparent",
+                    color: riskFilter === level ? "#F4F7FA" : "#627083",
+                    border:
+                      riskFilter === level
+                        ? "1px solid #1D2938"
+                        : "1px solid transparent",
+                  }}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-[#627083]">Status:</span>
+              {["ALL", "KNOWN_EXPLOITED", "GENERAL"].map((state) => (
+                <button
+                  key={state}
+                  type="button"
+                  onClick={() => setStatusFilter(state as typeof statusFilter)}
+                  className="rounded px-2.5 py-1 text-[11px] font-medium transition-colors"
+                  style={{
+                    background:
+                      statusFilter === state ? "#1D2938" : "transparent",
+                    color: statusFilter === state ? "#F4F7FA" : "#627083",
+                    border:
+                      statusFilter === state
+                        ? "1px solid #1D2938"
+                        : "1px solid transparent",
+                  }}
+                >
+                  {state === "ALL"
+                    ? "ALL"
+                    : state === "KNOWN_EXPLOITED"
+                      ? "KEV"
+                      : "GENERAL"}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setKevOnly((current) => !current)}
+              className="rounded border px-3 py-1.5 text-[11px] font-semibold"
+              style={{
+                background: kevOnly ? "rgba(255,138,76,0.15)" : "#111925",
+                color: kevOnly ? "#FF8A4C" : "#627083",
+                borderColor: kevOnly ? "rgba(255,138,76,0.4)" : "#1D2938",
+              }}
+            >
+              🔥 KEV only
+            </button>
+
+            <div className="ml-auto flex items-center gap-2 text-xs text-[#627083]">
+              <button
+                type="button"
+                onClick={() => handleSort("severity")}
+                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-[10px] uppercase tracking-[0.15em]"
+              >
+                Severity
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSort("newest")}
+                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-[10px] uppercase tracking-[0.15em]"
+              >
+                Newest
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSort("cve")}
+                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-[10px] uppercase tracking-[0.15em]"
+              >
+                CVE
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-[#1D2938]">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr
+                  style={{
+                    background: "#0D131D",
+                    borderBottom: "1px solid #1D2938",
+                  }}
+                >
+                  {[
+                    "CVE ID",
+                    "CVSS",
+                    "Severity",
+                    "Description",
+                    "Affected product",
+                    "Status",
+                    "KEV",
+                  ].map((header) => (
+                    <th
+                      key={header}
+                      className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#627083]"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAndSorted.map((v, index) => {
+                  const kevMeta = kevLookup.get(v.id.toUpperCase())
+                  const severityColor = riskColor[v.severity] || "#56B4FF"
+                  return (
+                    <tr
+                      key={v.id}
+                      tabIndex={0}
+                      role="button"
+                      onClick={() => setSelectedVuln(v)}
+                      onKeyDown={(
+                        event: KeyboardEvent<HTMLTableRowElement>,
+                      ) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault()
+                          setSelectedVuln(v)
+                        }
+                      }}
+                      className="cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-[#56B4FF]"
+                      style={{
+                        background: index % 2 === 0 ? "#111925" : "#0F1720",
+                        borderBottom: "1px solid rgba(29, 41, 56, 0.6)",
+                      }}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-mono text-xs font-bold text-[#FF8A4C]">
+                          {v.id}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div
+                          className="font-mono text-xs font-semibold"
+                          style={{ color: severityColor }}
+                        >
+                          {v.cvss?.toFixed(1) ?? "—"}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className="rounded px-2 py-0.5 text-[10px] font-semibold"
+                          style={{
+                            background: `${severityColor}20`,
+                            color: severityColor,
+                          }}
+                        >
+                          {v.severity}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="max-w-[420px]">
+                          <div className="text-xs text-[#F4F7FA]">
+                            {v.description}
+                          </div>
+                          {kevMeta?.shortDescription && (
+                            <div className="mt-1 text-[10px] text-[#627083]">
+                              {kevMeta.shortDescription}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-xs text-[#9AA8B8]">
+                          {getVendorProductLabel(v, kevMeta)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className="rounded px-2 py-0.5 text-[10px] font-semibold"
+                          style={{
+                            background: v.is_kev
+                              ? "rgba(255,138,76,0.12)"
+                              : "rgba(86,180,255,0.12)",
+                            color: v.is_kev ? "#FF8A4C" : "#56B4FF",
+                          }}
+                        >
+                          {v.is_kev ? "Known Exploited" : "General"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {v.is_kev ? (
+                          <span className="rounded border border-[#FF8A4C40] bg-[#FF8A4C1A] px-2 py-0.5 text-[10px] font-semibold text-[#FF8A4C]">
+                            KEV
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-[#627083]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+
+            {filteredAndSorted.length === 0 && (
+              <div className="bg-[#111925] p-12 text-center">
+                <div className="text-lg font-semibold text-[#F4F7FA]">
+                  No matching vulnerabilities
+                </div>
+                <p className="mt-2 text-sm text-[#9AA8B8]">
+                  Adjust filters to widen the set or clear the search to review
+                  additional CVEs.
+                </p>
               </div>
             )}
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
-      {/* Filters */}
-      <div
-        className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
-        style={{ background: "#0D131D", border: "1px solid #1D2938" }}
-      >
-        <span className="text-xs" style={{ color: "#627083" }}>
-          Risk:
-        </span>
-        {["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"].map((r) => (
-          <button
-            key={r}
-            onClick={() => setRiskFilter(r)}
-            className="px-2.5 py-1 rounded text-xs font-medium transition-all"
-            style={{
-              background:
-                riskFilter === r
-                  ? r === "ALL"
-                    ? "#1D2938"
-                    : riskColor[r] + "20"
-                  : "transparent",
-              color: riskFilter === r ? (r === "ALL" ? "#F4F7FA" : riskColor[r]) : "#627083",
-            }}
-          >
-            {r}
-          </button>
-        ))}
-
-        <div className="w-px h-4" style={{ background: "#1D2938" }} />
-
-        <button
-          onClick={() => setKevOnly(!kevOnly)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all"
-          style={{
-            background: kevOnly ? "#FF4D5E15" : "transparent",
-            color: kevOnly ? "#FF4D5E" : "#627083",
-          }}
-        >
-          KEV Only
-        </button>
-
-        <span className="ml-auto text-xs" style={{ color: "#627083" }}>
-          {sorted.length} results
-        </span>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #1D2938" }}>
-        <table className="w-full">
-          <thead>
-            <tr style={{ background: "#0D131D", borderBottom: "1px solid #1D2938" }}>
-              <th className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase" style={{ color: "#627083" }}>
-                CVE
-              </th>
-              <th
-                className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase cursor-pointer select-none"
-                style={{ color: sortField === "cvss" ? "#F4F7FA" : "#627083" }}
-                onClick={() => handleSort("cvss")}
+      {selectedVuln && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#02070d]/80 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#1D2938] bg-[#0D131D] p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#627083]">
+                  {selectedVuln.is_kev
+                    ? "Known Exploited Vulnerability"
+                    : "General Vulnerability"}
+                </div>
+                <h3 className="mt-2 font-mono text-lg font-semibold text-[#F4F7FA]">
+                  {selectedVuln.id}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedVuln(null)}
+                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-xs text-[#9AA8B8]"
               >
-                CVSS {sortField === "cvss" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-              </th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase" style={{ color: "#627083" }}>
-                KEV
-              </th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase" style={{ color: "#627083" }}>
-                ASSET
-              </th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase" style={{ color: "#627083" }}>
-                PRODUCT
-              </th>
-              <th
-                className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase cursor-pointer select-none"
-                style={{ color: sortField === "risk" ? "#F4F7FA" : "#627083" }}
-                onClick={() => handleSort("risk")}
-              >
-                RISK {sortField === "risk" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-              </th>
-              <th className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase" style={{ color: "#627083" }}>
-                STATUS
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((v, i) => (
-              <tr
-                key={v.cve}
-                className="transition-all cursor-pointer"
-                style={{
-                  background: i % 2 === 0 ? "#111925" : "#0F1720",
-                  borderBottom: "1px solid #1D293840",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "#1D293830";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = i % 2 === 0 ? "#111925" : "#0F1720";
-                }}
-              >
-                <td className="px-4 py-3">
-                  <span className="font-mono text-sm font-medium" style={{ color: "#F4F7FA" }}>
-                    {v.cve}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-12 h-1 rounded-full" style={{ background: "#1D2938" }}>
-                      <div
-                        className="h-1 rounded-full"
-                        style={{ width: `${(v.cvss / 10) * 100}%`, background: riskColor[v.risk] }}
-                      />
-                    </div>
-                    <span className="font-mono text-sm font-semibold" style={{ color: riskColor[v.risk] }}>
-                      {v.cvss}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  {v.kev ? (
-                    <span
-                      className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                      style={{ background: "#FF4D5E20", color: "#FF4D5E" }}
-                    >
-                      YES
-                    </span>
-                  ) : (
-                    <span className="text-[10px]" style={{ color: "#627083" }}>
-                      —
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-sm" style={{ color: "#9AA8B8" }}>
-                    {v.asset}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div>
-                    <div className="text-xs" style={{ color: "#9AA8B8" }}>
-                      {v.product}
-                    </div>
-                    <div className="text-[10px]" style={{ color: "#627083" }}>
-                      {v.vendor}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      className="w-1.5 h-5 rounded-sm"
-                      style={{ background: riskColor[v.risk] }}
-                    />
-                    <span className="text-xs font-semibold" style={{ color: riskColor[v.risk] }}>
-                      {v.risk}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                  Title
+                </div>
+                <div className="mt-2 text-sm text-[#F4F7FA]">
+                  {kevLookup.get(selectedVuln.id.toUpperCase())
+                    ?.vulnerabilityName || selectedVuln.id}
+                </div>
+              </div>
+              <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                  Severity
+                </div>
+                <div className="mt-2 flex items-center gap-2">
                   <span
-                    className="text-[11px] font-medium px-2 py-0.5 rounded"
+                    className="rounded px-2 py-0.5 text-[10px] font-semibold"
                     style={{
-                      color: statusConfig[v.status].color,
-                      background: statusConfig[v.status].color + "15",
+                      background: `${riskColor[selectedVuln.severity] || "#56B4FF"}20`,
+                      color: riskColor[selectedVuln.severity] || "#56B4FF",
                     }}
                   >
-                    {statusConfig[v.status].label}
+                    {selectedVuln.severity}
                   </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <span className="font-mono text-xs text-[#9AA8B8]">
+                    CVSS {selectedVuln.cvss?.toFixed(1) ?? "N/A"}
+                  </span>
+                </div>
+              </div>
+            </div>
 
-        <div
-          className="flex items-center justify-between px-4 py-2.5"
-          style={{ background: "#0D131D", borderTop: "1px solid #1D2938" }}
-        >
-          <span className="text-xs" style={{ color: "#627083" }}>
-            {sorted.length} vulnerabilities shown
-          </span>
-          <span className="text-xs" style={{ color: "#627083" }}>
-            Source: CISA KEV + NIST NVD · Last updated 18:42 UTC
-          </span>
+            <div className="mt-4 rounded-lg border border-[#1D2938] bg-[#111925] p-4">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                Description
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[#D7E0EA]">
+                {selectedVuln.description}
+              </p>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                  Vendor / product
+                </div>
+                <div className="mt-2 text-sm text-[#F4F7FA]">
+                  {getVendorProductLabel(
+                    selectedVuln,
+                    kevLookup.get(selectedVuln.id.toUpperCase()),
+                  )}
+                </div>
+              </div>
+              <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                  Published
+                </div>
+                <div className="mt-2 text-sm text-[#F4F7FA]">
+                  {formatDate(selectedVuln.published)}
+                </div>
+              </div>
+            </div>
+
+            {(selectedVuln.is_kev ||
+              selectedVuln.kev_details ||
+              kevLookup.get(selectedVuln.id.toUpperCase())) && (
+              <div className="mt-4 rounded-lg border border-[#FF8A4C40] bg-[#111925] p-4">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-[#FF8A4C]">
+                  Remediation
+                </div>
+                <div className="mt-2 text-sm text-[#F4F7FA]">
+                  {kevLookup.get(selectedVuln.id.toUpperCase())
+                    ?.requiredAction ||
+                    selectedVuln.kev_details?.short_description ||
+                    "Apply vendor remediation guidance and verify impacted systems are patched."}
+                </div>
+                {selectedVuln.kev_details?.due_date && (
+                  <div className="mt-2 text-[11px] text-[#9AA8B8]">
+                    Due date: {formatDate(selectedVuln.kev_details.due_date)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedVuln.references && selectedVuln.references.length > 0 && (
+              <div className="mt-4 rounded-lg border border-[#1D2938] bg-[#111925] p-4">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                  References
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {selectedVuln.references.map((reference) => (
+                    <li key={reference}>
+                      <a
+                        href={reference}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-xs text-[#56B4FF] underline-offset-2 hover:underline"
+                      >
+                        {reference}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.18em] text-[#627083]">
+              {selectedVuln.cwe && (
+                <span className="rounded border border-[#1D2938] bg-[#0D131D] px-2 py-1">
+                  {selectedVuln.cwe}
+                </span>
+              )}
+              <span className="rounded border border-[#1D2938] bg-[#0D131D] px-2 py-1">
+                {selectedVuln.is_kev
+                  ? "KEV / known exploited"
+                  : "General vulnerability"}
+              </span>
+              <span className="rounded border border-[#1D2938] bg-[#0D131D] px-2 py-1">
+                Source: {selectedVuln.source || "NVD"}
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
-  );
+  )
 }

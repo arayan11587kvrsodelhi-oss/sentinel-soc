@@ -1,82 +1,140 @@
-import { useState } from "react";
+import { useState } from "react"
 
 interface SimResult {
-  action: string;
-  target: string;
-  result: string;
-  time: string;
+  action: string
+
+  target: string
+
+  result: string
+
+  time: string
 }
 
 export default function ResponseCenter() {
-  const [simulating, setSimulating] = useState<string | null>(null);
-  const [results, setResults] = useState<SimResult[]>([]);
+  const [simulating, setSimulating] = useState<string | null>(null)
+
+  const [results, setResults] = useState<SimResult[]>([])
 
   const runSimulation = (action: string, target: string) => {
-    setSimulating(action);
+    setSimulating(action)
+
     setTimeout(() => {
-      const now = new Date();
-      const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} UTC`;
-      setResults((prev) => [{ action, target, result: "SUCCESS", time }, ...prev]);
-      setSimulating(null);
-    }, 2000);
-  };
+      const now = new Date()
+
+      const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} UTC`
+
+      setResults((prev) => [
+        { action, target, result: "SUCCESS", time },
+        ...prev,
+      ])
+
+      setSimulating(null)
+    }, 2000)
+  }
 
   const actions = [
     {
       id: "ISOLATE_HOST",
+
       title: "Isolate Host",
+
       desc: "Simulated network isolation — removes host from all network segments",
+
       target: "auth-01",
+
       icon: "⊘",
+
       color: "#FF4D5E",
-      detail: "Simulates blocking all inbound/outbound traffic to the target host at the network switch level.",
+
+      detail:
+        "Simulates blocking all inbound/outbound traffic to the target host at the network switch level.",
     },
+
     {
       id: "BLOCK_IP",
+
       title: "Block IP",
+
       desc: "Simulated firewall rule — blocks source IP at perimeter",
+
       target: "192.168.1.42",
+
       icon: "⊗",
+
       color: "#FF8A4C",
-      detail: "Simulates adding a deny rule for 192.168.1.42 across all perimeter firewall devices.",
+
+      detail:
+        "Simulates adding a deny rule for 192.168.1.42 across all perimeter firewall devices.",
     },
+
     {
       id: "DISABLE_ACCOUNT",
+
       title: "Disable Account",
+
       desc: "Simulated account containment — disables compromised user account",
+
       target: "admin",
+
       icon: "⊘",
+
       color: "#F4C95D",
-      detail: "Simulates disabling the affected account in the identity provider and invalidating active sessions.",
+
+      detail:
+        "Simulates disabling the affected account in the identity provider and invalidating active sessions.",
     },
+
     {
       id: "FORCE_PASSWORD_RESET",
+
       title: "Force Password Reset",
+
       desc: "Simulated credential rotation for targeted accounts",
+
       target: "admin, root, svc_backup",
+
       icon: "↺",
+
       color: "#7C8CFF",
-      detail: "Simulates forcing an immediate password change for all accounts targeted in the attack.",
+
+      detail:
+        "Simulates forcing an immediate password change for all accounts targeted in the attack.",
     },
+
     {
       id: "CAPTURE_MEMORY",
+
       title: "Capture Memory Dump",
+
       desc: "Simulated forensic memory capture for analysis",
+
       target: "auth-01",
+
       icon: "⊡",
+
       color: "#56B4FF",
-      detail: "Simulates initiating a live memory dump from the affected system for forensic analysis.",
+
+      detail:
+        "Simulates initiating a live memory dump from the affected system for forensic analysis.",
     },
+
     {
       id: "SNAPSHOT",
+
       title: "Create System Snapshot",
+
       desc: "Simulated disk snapshot for forensic preservation",
+
       target: "auth-01",
+
       icon: "◉",
+
       color: "#42D392",
-      detail: "Simulates creating a point-in-time disk snapshot to preserve evidence.",
+
+      detail:
+        "Simulates creating a point-in-time disk snapshot to preserve evidence.",
     },
-  ];
+  ]
 
   return (
     <div className="space-y-5">
@@ -97,6 +155,7 @@ export default function ResponseCenter() {
         className="rounded-xl p-4 flex items-start gap-4"
         style={{
           background: "#F4C95D08",
+
           border: "2px solid #F4C95D40",
         }}
       >
@@ -123,8 +182,9 @@ export default function ResponseCenter() {
             <span className="font-semibold" style={{ color: "#F4C95D" }}>
               simulated
             </span>
-            . No real infrastructure will be modified, no accounts will be disabled, and no firewall
-            rules will be created. This is a safe learning and testing environment.
+            . No real infrastructure will be modified, no accounts will be
+            disabled, and no firewall rules will be created. This is a safe
+            learning and testing environment.
           </p>
         </div>
       </div>
@@ -132,12 +192,16 @@ export default function ResponseCenter() {
       <div className="grid grid-cols-5 gap-5">
         {/* Actions */}
         <div className="col-span-3 space-y-3">
-          <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: "#627083" }}>
+          <span
+            className="text-xs font-semibold tracking-widest uppercase"
+            style={{ color: "#627083" }}
+          >
             AVAILABLE RESPONSE ACTIONS
           </span>
           {actions.map((action) => {
-            const isRunning = simulating === action.id;
-            const hasDone = results.some((r) => r.action === action.id);
+            const isRunning = simulating === action.id
+
+            const hasDone = results.some((r) => r.action === action.id)
 
             return (
               <div
@@ -148,14 +212,20 @@ export default function ResponseCenter() {
                 <div className="flex items-start gap-4">
                   <div
                     className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-lg"
-                    style={{ background: action.color + "15", color: action.color }}
+                    style={{
+                      background: action.color + "15",
+                      color: action.color,
+                    }}
                   >
                     {action.icon}
                   </div>
 
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-semibold" style={{ color: "#F4F7FA" }}>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: "#F4F7FA" }}
+                      >
                         {action.title}
                       </span>
                       {hasDone && !isRunning && (
@@ -174,10 +244,16 @@ export default function ResponseCenter() {
                       {action.detail}
                     </p>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px]" style={{ color: "#627083" }}>
+                      <span
+                        className="text-[10px]"
+                        style={{ color: "#627083" }}
+                      >
                         Target:
                       </span>
-                      <span className="font-mono text-[11px] font-medium" style={{ color: "#9AA8B8" }}>
+                      <span
+                        className="font-mono text-[11px] font-medium"
+                        style={{ color: "#9AA8B8" }}
+                      >
                         {action.target}
                       </span>
                     </div>
@@ -191,21 +267,37 @@ export default function ResponseCenter() {
                       background: isRunning
                         ? action.color + "20"
                         : hasDone
-                        ? "#42D39215"
-                        : action.color + "15",
+                          ? "#42D39215"
+                          : action.color + "15",
+
                       color: isRunning
                         ? action.color
                         : hasDone
-                        ? "#42D392"
-                        : action.color,
-                      border: `1px solid ${isRunning ? action.color + "40" : hasDone ? "#42D39230" : action.color + "30"}`,
+                          ? "#42D392"
+                          : action.color,
+
+                      border: `1px solid ${
+                        isRunning
+                          ? action.color + "40"
+                          : hasDone
+                            ? "#42D39230"
+                            : action.color + "30"
+                      }`,
+
                       opacity: simulating !== null && !isRunning ? 0.5 : 1,
-                      cursor: simulating !== null && !isRunning ? "not-allowed" : "pointer",
+
+                      cursor:
+                        simulating !== null && !isRunning
+                          ? "not-allowed"
+                          : "pointer",
                     }}
                   >
                     {isRunning ? (
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "currentColor" }} />
+                        <span
+                          className="w-2 h-2 rounded-full animate-pulse"
+                          style={{ background: "currentColor" }}
+                        />
                         Running...
                       </span>
                     ) : hasDone ? (
@@ -216,14 +308,20 @@ export default function ResponseCenter() {
                   </button>
                 </div>
               </div>
-            );
+            )
           })}
         </div>
 
         {/* Results panel */}
         <div className="col-span-2 space-y-4">
-          <div className="rounded-xl p-4 sticky top-0" style={{ background: "#111925", border: "1px solid #1D2938" }}>
-            <span className="text-xs font-semibold tracking-widest uppercase block mb-3" style={{ color: "#627083" }}>
+          <div
+            className="rounded-xl p-4 sticky top-0"
+            style={{ background: "#111925", border: "1px solid #1D2938" }}
+          >
+            <span
+              className="text-xs font-semibold tracking-widest uppercase block mb-3"
+              style={{ color: "#627083" }}
+            >
               SIMULATION LOG
             </span>
 
@@ -236,7 +334,8 @@ export default function ResponseCenter() {
                   ◌
                 </div>
                 <p className="text-xs" style={{ color: "#627083" }}>
-                  No simulations run yet. Execute a response action to see results here.
+                  No simulations run yet. Execute a response action to see
+                  results here.
                 </p>
               </div>
             ) : (
@@ -245,36 +344,57 @@ export default function ResponseCenter() {
                   <div
                     key={i}
                     className="rounded-lg p-3"
-                    style={{ background: "#0D131D", border: "1px solid #42D39230" }}
+                    style={{
+                      background: "#0D131D",
+                      border: "1px solid #42D39230",
+                    }}
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <div className="w-2 h-2 rounded-full" style={{ background: "#42D392" }} />
-                      <span className="text-xs font-semibold" style={{ color: "#42D392" }}>
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ background: "#42D392" }}
+                      />
+                      <span
+                        className="text-xs font-semibold"
+                        style={{ color: "#42D392" }}
+                      >
                         ✓ SIMULATION COMPLETE
                       </span>
                     </div>
                     <div className="space-y-1 text-xs">
                       <div className="flex items-center justify-between">
                         <span style={{ color: "#627083" }}>Action</span>
-                        <span className="font-mono font-medium" style={{ color: "#F4F7FA" }}>
+                        <span
+                          className="font-mono font-medium"
+                          style={{ color: "#F4F7FA" }}
+                        >
                           {res.action.replace(/_/g, " ")}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span style={{ color: "#627083" }}>Target</span>
-                        <span className="font-mono font-medium" style={{ color: "#9AA8B8" }}>
+                        <span
+                          className="font-mono font-medium"
+                          style={{ color: "#9AA8B8" }}
+                        >
                           {res.target}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span style={{ color: "#627083" }}>Result</span>
-                        <span className="font-medium" style={{ color: "#42D392" }}>
+                        <span
+                          className="font-medium"
+                          style={{ color: "#42D392" }}
+                        >
                           {res.result}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span style={{ color: "#627083" }}>Time</span>
-                        <span className="font-mono text-[10px]" style={{ color: "#627083" }}>
+                        <span
+                          className="font-mono text-[10px]"
+                          style={{ color: "#627083" }}
+                        >
                           {res.time}
                         </span>
                       </div>
@@ -287,7 +407,11 @@ export default function ResponseCenter() {
             {results.length > 0 && (
               <div
                 className="mt-3 p-2.5 rounded-lg text-center text-xs"
-                style={{ background: "#F4C95D08", border: "1px solid #F4C95D20", color: "#F4C95D" }}
+                style={{
+                  background: "#F4C95D08",
+                  border: "1px solid #F4C95D20",
+                  color: "#F4C95D",
+                }}
               >
                 ◆ All actions above are simulated · No real changes were made
               </div>
@@ -295,17 +419,28 @@ export default function ResponseCenter() {
           </div>
 
           {/* Incident Summary */}
-          <div className="rounded-xl p-4" style={{ background: "#111925", border: "1px solid #1D2938" }}>
-            <span className="text-xs font-semibold tracking-widest uppercase block mb-3" style={{ color: "#627083" }}>
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "#111925", border: "1px solid #1D2938" }}
+          >
+            <span
+              className="text-xs font-semibold tracking-widest uppercase block mb-3"
+              style={{ color: "#627083" }}
+            >
               INCIDENT CONTEXT
             </span>
             <div className="space-y-2">
               {[
                 { k: "Incident", v: "INC-2026-00842" },
+
                 { k: "Type", v: "Credential Attack" },
+
                 { k: "Severity", v: "CRITICAL", c: "#FF4D5E" },
+
                 { k: "Source IP", v: "192.168.1.42" },
+
                 { k: "Target", v: "auth-01" },
+
                 { k: "MITRE", v: "T1110", c: "#7C8CFF" },
               ].map((item) => (
                 <div key={item.k} className="flex items-center justify-between">
@@ -325,5 +460,5 @@ export default function ResponseCenter() {
         </div>
       </div>
     </div>
-  );
+  )
 }

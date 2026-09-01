@@ -1,86 +1,129 @@
-import React, { useState, useRef, useCallback } from "react";
-import { ProvenanceBadge } from "../components/ProvenanceBadge";
+import React, { useState, useRef, useCallback, useEffect } from "react"
+import { ProvenanceBadge } from "../components/ProvenanceBadge"
+import {
+  DashboardMetrics,
+  Incident,
+  SecurityEvent,
+  getDashboard,
+  getIncidents,
+  getThreats,
+  FALLBACK_DASHBOARD,
+  FALLBACK_INCIDENTS,
+  wsManager,
+} from "../lib/sentinel-api"
+import IncidentDrawer from "../components/IncidentDrawer"
 
 // ─── Data ─────────────────────────────────────────────────
 
 const sparkData = {
-  score:     [80, 82, 81, 83, 85, 84, 85, 86, 87],
+  score: [80, 82, 81, 83, 85, 84, 85, 86, 87],
   incidents: [9, 8, 7, 8, 6, 7, 6, 5, 4],
-  threats:   [0, 1, 1, 2, 1, 2, 2, 1, 2],
-  events:    [90, 95, 88, 102, 108, 115, 112, 120, 128],
-};
+  threats: [0, 1, 1, 2, 1, 2, 2, 1, 2],
+  events: [90, 95, 88, 102, 108, 115, 112, 120, 128],
+}
 
 const eventsData = [
-  45, 52, 48, 61, 58, 68, 72, 69, 75, 80, 77, 82,
-  90, 85, 91, 88, 95, 100, 108, 115, 112, 120, 125,
-  118, 128, 122, 130, 128, 125, 128,
-];
+  45, 52, 48, 61, 58, 68, 72, 69, 75, 80, 77, 82, 90, 85, 91, 88, 95, 100, 108,
+  115, 112, 120, 125, 118, 128, 122, 130, 128, 125, 128,
+]
 const authFailures = [
-  2, 3, 2, 4, 3, 5, 4, 6, 8, 5, 7, 9, 14, 11, 18,
-  16, 22, 28, 35, 32, 40, 45, 12, 5, 3, 2, 2, 3, 3, 2,
-];
+  2, 3, 2, 4, 3, 5, 4, 6, 8, 5, 7, 9, 14, 11, 18, 16, 22, 28, 35, 32, 40, 45,
+  12, 5, 3, 2, 2, 3, 3, 2,
+]
 
 const incidents = [
-  { id: "INC-00842", severity: "CRITICAL", title: "Credential Attack",       technique: "T1110",     time: "2m ago",  status: "INVESTIGATING" },
-  { id: "INC-00841", severity: "HIGH",     title: "Suspicious PowerShell",   technique: "T1059.001", time: "8m ago",  status: "NEW" },
-  { id: "INC-00840", severity: "MEDIUM",   title: "Network Scan",            technique: "T1046",     time: "14m ago", status: "REVIEW" },
-  { id: "INC-00839", severity: "LOW",      title: "DNS Enumeration",         technique: "T1018",     time: "22m ago", status: "REVIEW" },
-];
+  {
+    id: "INC-00842",
+    severity: "CRITICAL",
+    title: "Credential Attack",
+    technique: "T1110",
+    time: "2m ago",
+    status: "INVESTIGATING",
+  },
+  {
+    id: "INC-00841",
+    severity: "HIGH",
+    title: "Suspicious PowerShell",
+    technique: "T1059.001",
+    time: "8m ago",
+    status: "NEW",
+  },
+  {
+    id: "INC-00840",
+    severity: "MEDIUM",
+    title: "Network Scan",
+    technique: "T1046",
+    time: "14m ago",
+    status: "REVIEW",
+  },
+  {
+    id: "INC-00839",
+    severity: "LOW",
+    title: "DNS Enumeration",
+    technique: "T1018",
+    time: "22m ago",
+    status: "REVIEW",
+  },
+]
 
 const sevColor: Record<string, string> = {
   CRITICAL: "#FF4D5E",
-  HIGH:     "#FF8A4C",
-  MEDIUM:   "#F4C95D",
-  LOW:      "#56B4FF",
-};
+  HIGH: "#FF8A4C",
+  MEDIUM: "#F4C95D",
+  LOW: "#56B4FF",
+}
 
 // ─── Interactive Sparkline ─────────────────────────────────
 
 interface SparklineProps {
-  data: number[];
-  color: string;
-  name: string;
-  unit?: string;
+  data: number[]
+  color: string
+  name: string
+  unit?: string
 }
 
 function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
 
-  const W = 72;
-  const H = 24;
-  const vMin = Math.min(...data);
-  const vMax = Math.max(...data);
-  const range = vMax - vMin || 1;
+  const W = 72
+  const H = 24
+  const vMin = Math.min(...data)
+  const vMax = Math.max(...data)
+  const range = vMax - vMin || 1
 
   const pts = data
     .map((v, i) => {
-      const x = (i / (data.length - 1)) * W;
-      const y = H - 2 - ((v - vMin) / range) * (H - 5);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
+      const x = (i / (data.length - 1)) * W
+      const y = H - 2 - ((v - vMin) / range) * (H - 5)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
     })
-    .join(" ");
+    .join(" ")
 
-  const lastX = W;
-  const lastY = H - 2 - ((data[data.length - 1] - vMin) / range) * (H - 5);
+  const lastX = W
+  const lastY = H - 2 - ((data[data.length - 1] - vMin) / range) * (H - 5)
 
   const handlePointer = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!svgRef.current) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const clientX = e.clientX;
-    const relX = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const idx = Math.round(relX * (data.length - 1));
-    setHoverIdx(idx);
-  };
+    if (!svgRef.current) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const clientX = e.clientX
+    const relX = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const idx = Math.round(relX * (data.length - 1))
+    setHoverIdx(idx)
+  }
 
   const handleLeave = () => {
-    setHoverIdx(null);
-  };
+    setHoverIdx(null)
+  }
 
-  const activeIdx = hoverIdx !== null ? hoverIdx : null;
-  const activeVal = activeIdx !== null ? data[activeIdx] : null;
-  const activeX = activeIdx !== null ? (activeIdx / (data.length - 1)) * W : lastX;
-  const activeY = activeIdx !== null ? H - 2 - ((data[activeIdx] - vMin) / range) * (H - 5) : lastY;
+  const activeIdx = hoverIdx !== null ? hoverIdx : null
+  const activeVal = activeIdx !== null ? data[activeIdx] : null
+  const activeX =
+    activeIdx !== null ? (activeIdx / (data.length - 1)) * W : lastX
+  const activeY =
+    activeIdx !== null
+      ? H - 2 - ((data[activeIdx] - vMin) / range) * (H - 5)
+      : lastY
 
   return (
     <div className="relative group/spark" data-cursor="graph">
@@ -121,8 +164,21 @@ function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
         {/* Active Dot with Glow */}
         {activeIdx !== null ? (
           <g>
-            <circle cx={activeX} cy={activeY} r="4.5" fill={color} fillOpacity="0.3" />
-            <circle cx={activeX} cy={activeY} r="2.2" fill={color} stroke="#0D131D" strokeWidth="1" />
+            <circle
+              cx={activeX}
+              cy={activeY}
+              r="4.5"
+              fill={color}
+              fillOpacity="0.3"
+            />
+            <circle
+              cx={activeX}
+              cy={activeY}
+              r="2.2"
+              fill={color}
+              stroke="#0D131D"
+              strokeWidth="1"
+            />
           </g>
         ) : (
           <circle cx={lastX} cy={lastY} r="2" fill={color} opacity="0.9" />
@@ -140,7 +196,10 @@ function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
             color: "#F4F7FA",
           }}
         >
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: color }}
+          />
           <span>
             {activeVal}
             {unit}
@@ -151,98 +210,108 @@ function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
         </div>
       )}
     </div>
-  );
+  )
 }
 
 // ─── Interactive Activity Chart ───────────────────────────
 
 function ActivityChart() {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
 
-  const VW = 740;
-  const VH = 148;
-  const PL = 44;  // Y-axis label space
-  const PR = 12;
-  const PT = 28;  // annotation label space
-  const PB = 22;  // X-axis label space
-  const CW = VW - PL - PR; // 684
-  const CH = VH - PT - PB; // 98
-  const yMax = 150;
+  const VW = 740
+  const VH = 148
+  const PL = 44 // Y-axis label space
+  const PR = 12
+  const PT = 28 // annotation label space
+  const PB = 22 // X-axis label space
+  const CW = VW - PL - PR // 684
+  const CH = VH - PT - PB // 98
+  const yMax = 150
 
-  const toX = (i: number) => PL + (i / (eventsData.length - 1)) * CW;
-  const toY = (v: number) => PT + CH - (v / yMax) * CH;
+  const toX = (i: number) => PL + (i / (eventsData.length - 1)) * CW
+  const toY = (v: number) => PT + CH - (v / yMax) * CH
 
-  const eventsCoords = eventsData.map((v, i) => ({ x: toX(i), y: toY(v) }));
+  const eventsCoords = eventsData.map((v, i) => ({ x: toX(i), y: toY(v) }))
   // Scale auth failures (0–45) × 3.2 to fit the 0–150 chart range nicely
-  const authCoords = authFailures.map((v, i) => ({ x: toX(i), y: toY(v * 3.2) }));
+  const authCoords = authFailures.map((v, i) => ({
+    x: toX(i),
+    y: toY(v * 3.2),
+  }))
 
-  const eventsLine = "M " + eventsCoords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L ");
+  const eventsLine =
+    "M " +
+    eventsCoords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L ")
   const eventsArea =
     `${eventsLine} L ${toX(eventsData.length - 1).toFixed(1)},${(PT + CH).toFixed(1)}` +
-    ` L ${PL},${(PT + CH).toFixed(1)} Z`;
-  const authLine = "M " + authCoords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L ");
+    ` L ${PL},${(PT + CH).toFixed(1)} Z`
+  const authLine =
+    "M " +
+    authCoords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L ")
 
-  const detX = toX(21);
-  const incX = toX(23);
+  const detX = toX(21)
+  const incX = toX(23)
 
-  const yGrid = [0, 50, 100, 150];
+  const yGrid = [0, 50, 100, 150]
   const xLabels = [
-    { idx: 0,  label: "12:14" },
-    { idx: 5,  label: "12:19" },
+    { idx: 0, label: "12:14" },
+    { idx: 5, label: "12:19" },
     { idx: 10, label: "12:24" },
     { idx: 15, label: "12:29" },
     { idx: 20, label: "12:34" },
     { idx: 25, label: "12:39" },
     { idx: 29, label: "12:43" },
-  ];
+  ]
 
-  const updatePointer = useCallback((clientX: number) => {
-    if (!svgRef.current) return;
-    const rect = svgRef.current.getBoundingClientRect();
-    const svgX = ((clientX - rect.left) / rect.width) * VW;
-    const clampedX = Math.max(PL, Math.min(VW - PR, svgX));
-    const relProgress = (clampedX - PL) / CW;
-    const idx = Math.round(relProgress * (eventsData.length - 1));
-    const safeIdx = Math.max(0, Math.min(eventsData.length - 1, idx));
-    setHoverIdx(safeIdx);
-  }, [CW, PL, PR, VW]);
+  const updatePointer = useCallback(
+    (clientX: number) => {
+      if (!svgRef.current) return
+      const rect = svgRef.current.getBoundingClientRect()
+      const svgX = ((clientX - rect.left) / rect.width) * VW
+      const clampedX = Math.max(PL, Math.min(VW - PR, svgX))
+      const relProgress = (clampedX - PL) / CW
+      const idx = Math.round(relProgress * (eventsData.length - 1))
+      const safeIdx = Math.max(0, Math.min(eventsData.length - 1, idx))
+      setHoverIdx(safeIdx)
+    },
+    [CW, PL, PR, VW],
+  )
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    updatePointer(e.clientX);
-  };
+    updatePointer(e.clientX)
+  }
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    updatePointer(e.clientX);
-  };
+    updatePointer(e.clientX)
+  }
 
   const handlePointerLeave = () => {
-    setHoverIdx(null);
-  };
+    setHoverIdx(null)
+  }
 
-  const activeIdx = hoverIdx;
-  const hasActive = activeIdx !== null;
-  const activeX = hasActive ? toX(activeIdx) : null;
-  const activeEventsVal = hasActive ? eventsData[activeIdx] : null;
-  const activeEventsY = hasActive ? toY(eventsData[activeIdx]) : null;
-  const activeAuthVal = hasActive ? authFailures[activeIdx] : null;
-  const activeAuthY = hasActive ? toY(authFailures[activeIdx] * 3.2) : null;
+  const activeIdx = hoverIdx
+  const hasActive = activeIdx !== null
+  const activeX = hasActive ? toX(activeIdx) : null
+  const activeEventsVal = hasActive ? eventsData[activeIdx] : null
+  const activeEventsY = hasActive ? toY(eventsData[activeIdx]) : null
+  const activeAuthVal = hasActive ? authFailures[activeIdx] : null
+  const activeAuthY = hasActive ? toY(authFailures[activeIdx] * 3.2) : null
 
   // Compute minute time string from base time 12:14 UTC
   const activeTimeStr = hasActive
     ? `12:${String(14 + activeIdx).padStart(2, "0")} UTC`
-    : null;
+    : null
 
   // Annotation if on specific index
   const activeAnnotation =
     activeIdx === 21
       ? { text: "⚑ DETECTION: Brute Force Password Spray", color: "#FF8A4C" }
       : activeIdx === 23
-      ? { text: "◆ INCIDENT: INC-00842 Created", color: "#FF4D5E" }
-      : null;
+        ? { text: "◆ INCIDENT: INC-00842 Created", color: "#FF4D5E" }
+        : null
 
-  const defaultLastPt = eventsCoords[eventsCoords.length - 1];
+  const defaultLastPt = eventsCoords[eventsCoords.length - 1]
 
   return (
     <div
@@ -263,12 +332,12 @@ function ActivityChart() {
       >
         <defs>
           <linearGradient id="evtAreaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#56B4FF" stopOpacity="0.14" />
+            <stop offset="0%" stopColor="#56B4FF" stopOpacity="0.14" />
             <stop offset="100%" stopColor="#56B4FF" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="evtLineGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%"   stopColor="#7C8CFF" />
-            <stop offset="55%"  stopColor="#56B4FF" />
+            <stop offset="0%" stopColor="#7C8CFF" />
+            <stop offset="55%" stopColor="#56B4FF" />
             <stop offset="100%" stopColor="#42D392" />
           </linearGradient>
           <clipPath id="chartArea">
@@ -278,17 +347,21 @@ function ActivityChart() {
 
         {/* Y-axis grid */}
         {yGrid.map((v) => {
-          const y = toY(v);
+          const y = toY(v)
           return (
             <g key={v}>
               <line
-                x1={PL} y1={y} x2={VW - PR} y2={y}
+                x1={PL}
+                y1={y}
+                x2={VW - PR}
+                y2={y}
                 stroke="#1D2938"
                 strokeWidth={v === 0 ? "1" : "0.5"}
                 strokeDasharray={v === 0 ? undefined : "3,6"}
               />
               <text
-                x={PL - 7} y={y + 3.5}
+                x={PL - 7}
+                y={y + 3.5}
                 textAnchor="end"
                 fontSize="9"
                 fill="#394B5E"
@@ -297,12 +370,13 @@ function ActivityChart() {
                 {v}
               </text>
             </g>
-          );
+          )
         })}
 
         {/* Y-axis label */}
         <text
-          x={8} y={PT + CH / 2}
+          x={8}
+          y={PT + CH / 2}
           textAnchor="middle"
           fontSize="8"
           fill="#394B5E"
@@ -314,38 +388,72 @@ function ActivityChart() {
 
         {/* Detection annotation background flag */}
         <line
-          x1={detX} y1={PT}
-          x2={detX} y2={PT + CH}
-          stroke="#FF8A4C" strokeWidth="0.8"
-          strokeDasharray="4,3" opacity="0.65"
+          x1={detX}
+          y1={PT}
+          x2={detX}
+          y2={PT + CH}
+          stroke="#FF8A4C"
+          strokeWidth="0.8"
+          strokeDasharray="4,3"
+          opacity="0.65"
         />
-        <rect x={detX - 32} y={5} width="64" height="15" rx="3" fill="#FF8A4C14" />
+        <rect
+          x={detX - 32}
+          y={5}
+          width="64"
+          height="15"
+          rx="3"
+          fill="#FF8A4C14"
+        />
         <text
-          x={detX} y={15.5}
-          textAnchor="middle" fontSize="8" fill="#FF8A4C"
-          fontFamily="'JetBrains Mono', monospace" fontWeight="600"
+          x={detX}
+          y={15.5}
+          textAnchor="middle"
+          fontSize="8"
+          fill="#FF8A4C"
+          fontFamily="'JetBrains Mono', monospace"
+          fontWeight="600"
         >
           ⚑ DETECTION
         </text>
 
         {/* Incident annotation background flag */}
         <line
-          x1={incX} y1={PT}
-          x2={incX} y2={PT + CH}
-          stroke="#FF4D5E" strokeWidth="0.8"
-          strokeDasharray="4,3" opacity="0.65"
+          x1={incX}
+          y1={PT}
+          x2={incX}
+          y2={PT + CH}
+          stroke="#FF4D5E"
+          strokeWidth="0.8"
+          strokeDasharray="4,3"
+          opacity="0.65"
         />
-        <rect x={incX - 28} y={5} width="56" height="15" rx="3" fill="#FF4D5E14" />
+        <rect
+          x={incX - 28}
+          y={5}
+          width="56"
+          height="15"
+          rx="3"
+          fill="#FF4D5E14"
+        />
         <text
-          x={incX} y={15.5}
-          textAnchor="middle" fontSize="8" fill="#FF4D5E"
-          fontFamily="'JetBrains Mono', monospace" fontWeight="600"
+          x={incX}
+          y={15.5}
+          textAnchor="middle"
+          fontSize="8"
+          fill="#FF4D5E"
+          fontFamily="'JetBrains Mono', monospace"
+          fontWeight="600"
         >
           ◆ INCIDENT
         </text>
 
         {/* Area fill */}
-        <path d={eventsArea} fill="url(#evtAreaGrad)" clipPath="url(#chartArea)" />
+        <path
+          d={eventsArea}
+          fill="url(#evtAreaGrad)"
+          clipPath="url(#chartArea)"
+        />
 
         {/* Auth failures secondary line */}
         <path
@@ -370,7 +478,10 @@ function ActivityChart() {
         />
 
         {/* Interactive Crosshair & Active Dots */}
-        {hasActive && activeX !== null && activeEventsY !== null && activeAuthY !== null ? (
+        {hasActive &&
+        activeX !== null &&
+        activeEventsY !== null &&
+        activeAuthY !== null ? (
           <g>
             {/* Vertical crosshair line */}
             <line
@@ -385,18 +496,55 @@ function ActivityChart() {
             />
 
             {/* Auth Failures Active Dot */}
-            <circle cx={activeX} cy={activeAuthY} r="7" fill="#FF4D5E" fillOpacity="0.25" />
-            <circle cx={activeX} cy={activeAuthY} r="3" fill="#FF4D5E" stroke="#0D131D" strokeWidth="1.5" />
+            <circle
+              cx={activeX}
+              cy={activeAuthY}
+              r="7"
+              fill="#FF4D5E"
+              fillOpacity="0.25"
+            />
+            <circle
+              cx={activeX}
+              cy={activeAuthY}
+              r="3"
+              fill="#FF4D5E"
+              stroke="#0D131D"
+              strokeWidth="1.5"
+            />
 
             {/* Event Volume Active Dot */}
-            <circle cx={activeX} cy={activeEventsY} r="8" fill="#56B4FF" fillOpacity="0.25" />
-            <circle cx={activeX} cy={activeEventsY} r="3.5" fill="#42D392" stroke="#0D131D" strokeWidth="1.5" />
+            <circle
+              cx={activeX}
+              cy={activeEventsY}
+              r="8"
+              fill="#56B4FF"
+              fillOpacity="0.25"
+            />
+            <circle
+              cx={activeX}
+              cy={activeEventsY}
+              r="3.5"
+              fill="#42D392"
+              stroke="#0D131D"
+              strokeWidth="1.5"
+            />
           </g>
         ) : (
           /* Default state last point */
           <g>
-            <circle cx={defaultLastPt.x} cy={defaultLastPt.y} r="7" fill="#42D392" fillOpacity="0.1" />
-            <circle cx={defaultLastPt.x} cy={defaultLastPt.y} r="2.5" fill="#42D392" />
+            <circle
+              cx={defaultLastPt.x}
+              cy={defaultLastPt.y}
+              r="7"
+              fill="#42D392"
+              fillOpacity="0.1"
+            />
+            <circle
+              cx={defaultLastPt.x}
+              cy={defaultLastPt.y}
+              r="2.5"
+              fill="#42D392"
+            />
           </g>
         )}
 
@@ -404,9 +552,15 @@ function ActivityChart() {
         {xLabels.map(({ idx, label }) => (
           <text
             key={label}
-            x={toX(idx)} y={VH - 4}
-            textAnchor="middle" fontSize="9"
-            fill={hasActive && Math.abs(activeIdx - idx) <= 1 ? "#56B4FF" : "#394B5E"}
+            x={toX(idx)}
+            y={VH - 4}
+            textAnchor="middle"
+            fontSize="9"
+            fill={
+              hasActive && Math.abs(activeIdx - idx) <= 1
+                ? "#56B4FF"
+                : "#394B5E"
+            }
             fontFamily="'JetBrains Mono', monospace"
             fontWeight={hasActive && activeIdx === idx ? "bold" : "normal"}
           >
@@ -416,82 +570,221 @@ function ActivityChart() {
       </svg>
 
       {/* Floating Interactive Tooltip */}
-      {hasActive && activeX !== null && activeEventsVal !== null && activeAuthVal !== null && (
-        <div
-          className="absolute pointer-events-none z-30 rounded-xl p-3 text-xs shadow-2xl transition-all"
-          style={{
-            background: "#0D131D",
-            border: "1px solid #1D2938",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.75)",
-            left: `${Math.max(14, Math.min(86, (activeX / VW) * 100))}%`,
-            top: "8px",
-            transform: "translateX(-50%)",
-            minWidth: "175px",
-          }}
-        >
-          <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#1D2938]">
-            <span className="font-mono font-bold text-xs" style={{ color: "#F4F7FA" }}>
-              {activeTimeStr}
-            </span>
-            <span
-              className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded"
-              style={{ background: "#42D39215", color: "#42D392", border: "1px solid #42D39230" }}
-            >
-              ● LIVE
-            </span>
+      {hasActive &&
+        activeX !== null &&
+        activeEventsVal !== null &&
+        activeAuthVal !== null && (
+          <div
+            className="absolute pointer-events-none z-30 rounded-xl p-3 text-xs shadow-2xl transition-all"
+            style={{
+              background: "#0D131D",
+              border: "1px solid #1D2938",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.75)",
+              left: `${Math.max(14, Math.min(86, (activeX / VW) * 100))}%`,
+              top: "8px",
+              transform: "translateX(-50%)",
+              minWidth: "175px",
+            }}
+          >
+            <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#1D2938]">
+              <span
+                className="font-mono font-bold text-xs"
+                style={{ color: "#F4F7FA" }}
+              >
+                {activeTimeStr}
+              </span>
+              <span
+                className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                style={{
+                  background: "#42D39215",
+                  color: "#42D392",
+                  border: "1px solid #42D39230",
+                }}
+              >
+                ● LIVE
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-4">
+                <span
+                  className="flex items-center gap-1.5 text-[11px]"
+                  style={{ color: "#9AA8B8" }}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: "#56B4FF" }}
+                  />
+                  Event Volume:
+                </span>
+                <span
+                  className="font-mono font-semibold text-xs"
+                  style={{ color: "#56B4FF" }}
+                >
+                  {activeEventsVal}{" "}
+                  <span
+                    className="text-[10px] font-normal"
+                    style={{ color: "#627083" }}
+                  >
+                    /min
+                  </span>
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span
+                  className="flex items-center gap-1.5 text-[11px]"
+                  style={{ color: "#9AA8B8" }}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: "#FF4D5E" }}
+                  />
+                  Auth Failures:
+                </span>
+                <span
+                  className="font-mono font-semibold text-xs"
+                  style={{ color: "#FF4D5E" }}
+                >
+                  {activeAuthVal}{" "}
+                  <span
+                    className="text-[10px] font-normal"
+                    style={{ color: "#627083" }}
+                  >
+                    /min
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            {activeAnnotation && (
+              <div
+                className="mt-2 pt-1.5 text-[10px] font-semibold tracking-tight"
+                style={{
+                  borderTop: "1px dashed #1D2938",
+                  color: activeAnnotation.color,
+                }}
+              >
+                {activeAnnotation.text}
+              </div>
+            )}
           </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "#9AA8B8" }}>
-                <span className="w-2 h-2 rounded-full" style={{ background: "#56B4FF" }} />
-                Event Volume:
-              </span>
-              <span className="font-mono font-semibold text-xs" style={{ color: "#56B4FF" }}>
-                {activeEventsVal} <span className="text-[10px] font-normal" style={{ color: "#627083" }}>/min</span>
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "#9AA8B8" }}>
-                <span className="w-2 h-2 rounded-full" style={{ background: "#FF4D5E" }} />
-                Auth Failures:
-              </span>
-              <span className="font-mono font-semibold text-xs" style={{ color: "#FF4D5E" }}>
-                {activeAuthVal} <span className="text-[10px] font-normal" style={{ color: "#627083" }}>/min</span>
-              </span>
-            </div>
-          </div>
-
-          {activeAnnotation && (
-            <div
-              className="mt-2 pt-1.5 text-[10px] font-semibold tracking-tight"
-              style={{ borderTop: "1px dashed #1D2938", color: activeAnnotation.color }}
-            >
-              {activeAnnotation.text}
-            </div>
-          )}
-        </div>
-      )}
+        )}
     </div>
-  );
+  )
 }
 
 // ─── Overview Screen ──────────────────────────────────────
 
 interface OverviewProps {
-  onNavigate: (screen: string) => void;
+  onNavigate: (screen: string) => void
 }
 
 export default function Overview({ onNavigate }: OverviewProps) {
-  const [hoveredThreat, setHoveredThreat] = useState<string | null>(null);
+  const [hoveredThreat, setHoveredThreat] = useState<string | null>(null)
+  const [dashboardData, setDashboardData] =
+    useState<DashboardMetrics>(FALLBACK_DASHBOARD)
+  const [activeIncidents, setActiveIncidents] =
+    useState<Incident[]>(FALLBACK_INCIDENTS)
+  const [recentThreats, setRecentThreats] = useState<SecurityEvent[]>([])
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(
+    null,
+  )
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [dashRes, incRes, threatRes] = await Promise.allSettled([
+          getDashboard(),
+          getIncidents({ status: "OPEN" }),
+          getThreats({ limit: 10 }),
+        ])
+
+        if (dashRes.status === "fulfilled" && dashRes.value) {
+          setDashboardData(dashRes.value)
+        }
+        if (incRes.status === "fulfilled" && incRes.value) {
+          setActiveIncidents(incRes.value)
+        }
+        if (threatRes.status === "fulfilled" && threatRes.value) {
+          setRecentThreats(threatRes.value)
+        }
+      } catch (err) {
+        console.warn("Overview: Using cached telemetry fallback", err)
+      }
+    }
+
+    loadData()
+
+    // Subscribe to live WebSocket events
+    const unsubscribe = wsManager.subscribe((msg) => {
+      if (msg.type === "INITIAL_STATE") {
+        if (msg.active_incidents) {
+          setActiveIncidents(msg.active_incidents)
+        }
+        if (msg.recent_events) {
+          setRecentThreats(msg.recent_events)
+        }
+      } else if (msg.type === "INCIDENT_UPDATE" && msg.incident) {
+        const updated = msg.incident as Incident
+        setActiveIncidents((prev) => {
+          const exists = prev.some((i) => i.incident_id === updated.incident_id)
+          if (exists) {
+            return prev.map((i) =>
+              i.incident_id === updated.incident_id ? updated : i,
+            )
+          }
+          return [updated, ...prev]
+        })
+      } else if (msg.event_msg_type === "SECURITY_EVENT" || msg.event_id) {
+        const newEvent = msg as SecurityEvent
+        setRecentThreats((prev) => [newEvent, ...prev.slice(0, 15)])
+      }
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  const criticalIncidentsCount = activeIncidents.filter(
+    (i) => i.severity === "CRITICAL",
+  ).length
 
   const threatData = [
-    { level: "Critical", count: 2,  color: "#FF4D5E", pct: 14, desc: "Active credential spray & brute force attempts" },
-    { level: "High",     count: 7,  color: "#FF8A4C", pct: 30, desc: "Suspicious PowerShell execution & policy alerts" },
-    { level: "Medium",   count: 19, color: "#F4C95D", pct: 56, desc: "Network port sweeps and abnormal connection rates" },
-    { level: "Low",      count: 43, color: "#56B4FF", pct: 100, desc: "DNS enumeration and low-confidence telemetry logs" },
-  ];
+    {
+      level: "Critical",
+      count: dashboardData.critical_events || 2,
+      color: "#FF4D5E",
+      pct: 14,
+      desc: "Active credential spray & brute force attempts",
+    },
+    {
+      level: "High",
+      count: dashboardData.high_events || 7,
+      color: "#FF8A4C",
+      pct: 30,
+      desc: "Suspicious PowerShell execution & policy alerts",
+    },
+    {
+      level: "Medium",
+      count: dashboardData.medium_events || 19,
+      color: "#F4C95D",
+      pct: 56,
+      desc: "Network port sweeps and abnormal connection rates",
+    },
+    {
+      level: "Low",
+      count: dashboardData.low_events || 43,
+      color: "#56B4FF",
+      pct: 100,
+      desc: "DNS enumeration and low-confidence telemetry logs",
+    },
+  ]
+
+  const handleOpenIncident = (inc: Incident) => {
+    setSelectedIncident(inc)
+    setIsDrawerOpen(true)
+  }
 
   return (
     <div className="space-y-5">
@@ -499,20 +792,25 @@ export default function Overview({ onNavigate }: OverviewProps) {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "#F4F7FA" }}>
-            Security Overview
+            Security Command Center
           </h1>
           <p className="mt-0.5 text-sm" style={{ color: "#9AA8B8" }}>
-            Good evening, Aryan. Here is what is happening across your environment.
+            Real-time Threat Intelligence, CISA KEV feeds, and Correlated SOC
+            Telemetry
           </p>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs" style={{ color: "#627083" }}>
-            Last sync{" "}
-            <span className="font-mono" style={{ color: "#9AA8B8" }}>12s ago</span>
+            Telemetry feed{" "}
+            <span className="font-mono text-[#9AA8B8]">LIVE STREAM</span>
           </span>
           <div
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium"
-            style={{ background: "#42D39215", color: "#42D392", border: "1px solid #42D39230" }}
+            style={{
+              background: "#42D39215",
+              color: "#42D392",
+              border: "1px solid #42D39230",
+            }}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse block" />
             LIVE
@@ -536,10 +834,10 @@ export default function Overview({ onNavigate }: OverviewProps) {
           },
           {
             label: "ACTIVE INCIDENTS",
-            value: "04",
+            value: String(activeIncidents.length).padStart(2, "0"),
             unit: "",
-            delta: "▼ 2 resolved today",
-            deltaColor: "#42D392",
+            delta: `${criticalIncidentsCount} Critical priority`,
+            deltaColor: criticalIncidentsCount > 0 ? "#FF4D5E" : "#42D392",
             prov: "derived" as const,
             color: "#F4C95D",
             spark: sparkData.incidents,
@@ -547,9 +845,9 @@ export default function Overview({ onNavigate }: OverviewProps) {
           },
           {
             label: "CRITICAL THREATS",
-            value: "02",
+            value: String(dashboardData.critical_events || 2).padStart(2, "0"),
             unit: "",
-            delta: "▲ +1 from yesterday",
+            delta: "Correlated telemetry",
             deltaColor: "#FF4D5E",
             prov: "live" as const,
             color: "#FF4D5E",
@@ -557,15 +855,15 @@ export default function Overview({ onNavigate }: OverviewProps) {
             name: "Critical Threats",
           },
           {
-            label: "EVENTS / MIN",
-            value: "128",
+            label: "CISA KEV CATALOG",
+            value: (dashboardData.kev_catalog_total || 1687).toLocaleString(),
             unit: "",
-            delta: "● LIVE · trending up",
-            deltaColor: "#42D392",
+            delta: "● Actively Exploited",
+            deltaColor: "#FF8A4C",
             prov: "live" as const,
-            color: "#56B4FF",
+            color: "#FF8A4C",
             spark: sparkData.events,
-            name: "Event Stream",
+            name: "CISA KEV Feed",
           },
         ].map((card) => (
           <div
@@ -587,7 +885,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
               <div>
                 <div className="flex items-baseline gap-1">
                   <span
-                    className="text-[2rem] font-semibold tabular-nums leading-none"
+                    className="text-[2rem] font-semibold tabular-nums leading-none font-mono"
                     style={{ color: card.color }}
                   >
                     {card.value}
@@ -598,16 +896,113 @@ export default function Overview({ onNavigate }: OverviewProps) {
                     </span>
                   )}
                 </div>
-                <p className="mt-1.5 text-[11px]" style={{ color: card.deltaColor }}>
+                <p
+                  className="mt-1.5 text-[11px]"
+                  style={{ color: card.deltaColor }}
+                >
                   {card.delta}
                 </p>
               </div>
               <div className="flex-shrink-0">
-                <Sparkline data={card.spark} color={card.color} name={card.name} />
+                <Sparkline
+                  data={card.spark}
+                  color={card.color}
+                  name={card.name}
+                />
               </div>
             </div>
           </div>
         ))}
+      </div>
+
+      {/* COMPACT SOC THREAT & INCIDENT INTELLIGENCE PANEL */}
+      <div
+        className="rounded-xl p-4"
+        style={{
+          background: "linear-gradient(145deg, #111925, #0D131D)",
+          border: "1px solid rgba(124,140,255,0.25)",
+        }}
+      >
+        <div
+          className="flex items-center justify-between mb-3 pb-2.5"
+          style={{ borderBottom: "1px solid #1D2938" }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-[#7C8CFF] flex items-center gap-1.5">
+              <span>🛡</span> SOC THREAT & INCIDENT INTELLIGENCE
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-[#7C8CFF15] text-[#7C8CFF] font-semibold">
+              DAY 3 CAPABILITY UPGRADE
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onNavigate("threat-intel")}
+              className="text-xs font-semibold text-[#56B4FF] hover:underline"
+            >
+              Open Threat Intel Feed →
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
+            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+              Active Incidents
+            </span>
+            <div className="text-xl font-bold font-mono text-[#F4F7FA] mt-0.5">
+              {activeIncidents.length}
+            </div>
+            <span className="text-[10px] text-[#42D392]">
+              Correlated & Live
+            </span>
+          </div>
+
+          <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
+            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+              Critical Incidents
+            </span>
+            <div className="text-xl font-bold font-mono text-[#FF4D5E] mt-0.5">
+              {criticalIncidentsCount}
+            </div>
+            <span className="text-[10px] text-[#FF4D5E]">
+              Requires containment
+            </span>
+          </div>
+
+          <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
+            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+              CISA KEV Catalog
+            </span>
+            <div className="text-xl font-bold font-mono text-[#FF8A4C] mt-0.5">
+              {(dashboardData.kev_catalog_total || 1687).toLocaleString()}
+            </div>
+            <span className="text-[10px] text-[#FF8A4C]">Known Exploited</span>
+          </div>
+
+          <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
+            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+              NVD Critical CVEs
+            </span>
+            <div className="text-xl font-bold font-mono text-[#F4C95D] mt-0.5">
+              {dashboardData.nvd_records_total || 40}
+            </div>
+            <span className="text-[10px] text-[#9AA8B8]">
+              CVSS v3.1 Enriched
+            </span>
+          </div>
+
+          <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
+            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+              Threat Activity
+            </span>
+            <div className="text-xl font-bold font-mono text-[#56B4FF] mt-0.5">
+              {recentThreats.length > 0 ? recentThreats.length : 12}
+            </div>
+            <span className="text-[10px] text-[#56B4FF]">Events in window</span>
+          </div>
+        </div>
       </div>
 
       {/* Activity Chart */}
@@ -625,18 +1020,23 @@ export default function Overview({ onNavigate }: OverviewProps) {
               LIVE SECURITY ACTIVITY
             </span>
             <p className="text-[11px] mt-0.5" style={{ color: "#394B5E" }}>
-              Events per minute over the last 30 minutes — interactive inspection with hover & touch crosshair
+              Events per minute over the last 30 minutes — interactive
+              inspection with hover & touch crosshair
             </p>
           </div>
           <div className="flex items-center gap-4 flex-shrink-0">
-            <div className="flex items-center gap-3 text-[11px]" style={{ color: "#627083" }}>
+            <div
+              className="flex items-center gap-3 text-[11px]"
+              style={{ color: "#627083" }}
+            >
               <span className="flex items-center gap-1.5">
                 <span
                   style={{
                     display: "inline-block",
                     width: "18px",
                     height: "2px",
-                    background: "linear-gradient(90deg, #7C8CFF, #56B4FF, #42D392)",
+                    background:
+                      "linear-gradient(90deg, #7C8CFF, #56B4FF, #42D392)",
                     borderRadius: "1px",
                   }}
                 />
@@ -679,7 +1079,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
           </div>
           <div className="space-y-3">
             {threatData.map((item) => {
-              const isHovered = hoveredThreat === item.level;
+              const isHovered = hoveredThreat === item.level
               return (
                 <div
                   key={item.level}
@@ -712,7 +1112,9 @@ export default function Overview({ onNavigate }: OverviewProps) {
                         style={{
                           background: item.color + (isHovered ? "30" : "18"),
                           color: item.color,
-                          boxShadow: isHovered ? `0 0 8px ${item.color}40` : "none",
+                          boxShadow: isHovered
+                            ? `0 0 8px ${item.color}40`
+                            : "none",
                         }}
                       >
                         {String(item.count).padStart(2, "0")} ({item.pct}%)
@@ -729,28 +1131,35 @@ export default function Overview({ onNavigate }: OverviewProps) {
                         width: `${item.pct}%`,
                         background: item.color,
                         opacity: isHovered ? 1 : 0.6,
-                        boxShadow: isHovered ? `0 0 8px ${item.color}80` : "none",
+                        boxShadow: isHovered
+                          ? `0 0 8px ${item.color}80`
+                          : "none",
                       }}
                     />
                   </div>
 
                   {isHovered && (
-                    <p className="text-[10px] mt-1.5 transition-opacity" style={{ color: "#627083" }}>
+                    <p
+                      className="text-[10px] mt-1.5 transition-opacity"
+                      style={{ color: "#627083" }}
+                    >
                       {item.desc}
                     </p>
                   )}
                 </div>
-              );
+              )
             })}
           </div>
           <div className="mt-4 pt-3" style={{ borderTop: "1px solid #1D2938" }}>
             <div className="flex justify-between items-center">
-              <span className="text-xs" style={{ color: "#627083" }}>Total detected</span>
+              <span className="text-xs" style={{ color: "#627083" }}>
+                Total streamed events
+              </span>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold font-mono" style={{ color: "#9AA8B8" }}>
-                  71 threats
+                <span className="text-xs font-semibold font-mono text-[#9AA8B8]">
+                  {dashboardData.total_events_streamed || 55} events
                 </span>
-                <span className="text-[9px] font-mono" style={{ color: "#7C8CFF" }}>
+                <span className="text-[9px] font-mono text-[#7C8CFF]">
                   ◇ DERIVED
                 </span>
               </div>
@@ -773,71 +1182,91 @@ export default function Overview({ onNavigate }: OverviewProps) {
             </span>
             <button
               onClick={() => onNavigate("incidents")}
-              className="text-xs transition-colors hover:underline"
+              className="text-xs transition-colors hover:underline cursor-pointer"
               style={{ color: "#56B4FF" }}
             >
-              View all 4 →
+              View all ({activeIncidents.length}) →
             </button>
           </div>
 
           <div className="space-y-2">
-            {incidents.map((inc) => (
+            {activeIncidents.slice(0, 4).map((inc) => (
               <div
-                key={inc.id}
-                onClick={() => onNavigate("incident-investigation")}
+                key={inc.incident_id}
+                onClick={() => handleOpenIncident(inc)}
                 className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all"
                 style={{ background: "#0D131D", border: "1px solid #1D2938" }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "#2D3F55";
-                  (e.currentTarget as HTMLElement).style.background = "#131C2A";
+                  ;(e.currentTarget as HTMLElement).style.borderColor =
+                    "#2D3F55"
+                  ;(e.currentTarget as HTMLElement).style.background = "#131C2A"
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "#1D2938";
-                  (e.currentTarget as HTMLElement).style.background = "#0D131D";
+                  ;(e.currentTarget as HTMLElement).style.borderColor =
+                    "#1D2938"
+                  ;(e.currentTarget as HTMLElement).style.background = "#0D131D"
                 }}
               >
                 <div className="flex items-center gap-3">
                   <div
                     className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ background: sevColor[inc.severity] }}
+                    style={{ background: sevColor[inc.severity] || "#56B4FF" }}
                   />
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold" style={{ color: "#F4F7FA" }}>
+                      <span
+                        className="text-xs font-semibold"
+                        style={{ color: "#F4F7FA" }}
+                      >
                         {inc.title}
                       </span>
                       <span
                         className="text-[10px] font-mono px-1 py-0.2 rounded font-semibold"
                         style={{
-                          background: sevColor[inc.severity] + "20",
-                          color: sevColor[inc.severity],
+                          background:
+                            (sevColor[inc.severity] || "#56B4FF") + "20",
+                          color: sevColor[inc.severity] || "#56B4FF",
                         }}
                       >
                         {inc.severity}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-mono" style={{ color: "#627083" }}>
-                        {inc.id}
+                      <span className="text-[10px] font-mono text-[#627083]">
+                        {inc.incident_id}
                       </span>
                       <span style={{ color: "#1D2938" }}>·</span>
-                      <span className="text-[10px] font-mono" style={{ color: "#7C8CFF" }}>
-                        MITRE {inc.technique}
+                      <span className="text-[10px] font-mono text-[#7C8CFF]">
+                        {inc.category}
                       </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px]" style={{ color: "#627083" }}>
-                    {inc.time}
+                  <span className="text-[11px] font-mono text-[#627083]">
+                    {new Date(inc.updated_at || Date.now()).toLocaleTimeString(
+                      [],
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      },
+                    )}
                   </span>
                   <span
                     className="text-[10px] font-mono px-2 py-0.5 rounded font-medium"
                     style={{
-                      background: inc.status === "INVESTIGATING" ? "#FF4D5E15" : "#56B4FF15",
-                      color: inc.status === "INVESTIGATING" ? "#FF4D5E" : "#56B4FF",
-                      border: `1px solid ${inc.status === "INVESTIGATING" ? "#FF4D5E30" : "#56B4FF30"}`,
+                      background:
+                        inc.status === "INVESTIGATING"
+                          ? "#FF4D5E15"
+                          : "#56B4FF15",
+                      color:
+                        inc.status === "INVESTIGATING" ? "#FF4D5E" : "#56B4FF",
+                      border: `1px solid ${
+                        inc.status === "INVESTIGATING"
+                          ? "#FF4D5E30"
+                          : "#56B4FF30"
+                      }`,
                     }}
                   >
                     {inc.status}
@@ -848,6 +1277,21 @@ export default function Overview({ onNavigate }: OverviewProps) {
           </div>
         </div>
       </div>
+
+      {/* Investigation Drawer Modal */}
+      <IncidentDrawer
+        incident={selectedIncident}
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onIncidentUpdated={(updated) => {
+          setActiveIncidents((prev) =>
+            prev.map((i) =>
+              i.incident_id === updated.incident_id ? updated : i,
+            ),
+          )
+          setSelectedIncident(updated)
+        }}
+      />
     </div>
-  );
+  )
 }
