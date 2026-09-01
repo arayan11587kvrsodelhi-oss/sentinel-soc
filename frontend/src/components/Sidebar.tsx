@@ -1,0 +1,1 @@
+import sentinelLogo from "../assets/sentinel-app-logo.png";
