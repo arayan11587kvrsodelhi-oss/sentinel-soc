@@ -1,1 +1,1 @@
-import sentinelLogo from "../assets/sentinel-app-logo.png";
+export { default as sentinelLogo } from "../assets/sentinel-app-logo.png";

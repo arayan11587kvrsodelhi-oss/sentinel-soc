@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react"
 
+import sentinelLogo from "./assets/sentinel-app-logo.png"
+
 import Overview from "./screens/Overview"
 
 import Incidents from "./screens/Incidents"
@@ -135,7 +137,7 @@ function SentinelEmblem({ size = 40 }: { size?: number }) {
       }}
     >
       <img
-        src="/app-icon.png"
+        src={sentinelLogo}
         alt="Sentinel emblem"
         style={{
           width: "82%",
