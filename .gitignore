@@ -51,3 +51,6 @@ logs/
 Thumbs.db
 .vercel
 .env*
+
+__pycache__/
+*.py[cod]
