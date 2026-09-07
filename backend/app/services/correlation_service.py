@@ -4,7 +4,6 @@ Correlates real-time security events into contextual incidents, mapping to MITRE
 Persists incident state lightweight in SQLite so changes survive server restarts.
 Enforces strict scenario isolation for concurrent simulation attack chains.
 """
-import os
 import json
 import sqlite3
 import logging
@@ -12,10 +11,11 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from app.models.schemas import SecurityEvent, Incident, MitreTechnique, calculate_risk_score, derive_risk_level, calculate_risk
 from app.services.mitre_service import get_technique
+from app.core.config import get_settings
 
 logger = logging.getLogger("sentinel.correlation")
 
-DB_PATH = os.getenv("SQLITE_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "sentinel.db"))
+DB_PATH = get_settings().resolved_sqlite_db_path
 
 SCENARIO_INCIDENT_TEMPLATES: Dict[str, Dict[str, Any]] = {
     "scenario_credential_brute_force": {
@@ -166,6 +166,13 @@ class CorrelationEngine:
                         conn.execute(f"ALTER TABLE incidents ADD COLUMN {col} {col_type}")
                     except Exception:
                         pass
+
+                # Indexes for common query patterns.
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_incidents_severity ON incidents(severity)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_incidents_scenario_id ON incidents(scenario_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_incidents_updated_at ON incidents(updated_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_ip ON incidents(source_ip)")
                 conn.commit()
         except Exception as e:
             logger.warning(f"Could not initialize SQLite incident table: {e}")

@@ -2,7 +2,7 @@
 NVD (National Vulnerability Database) Intelligence Service
 Fetches, enriches, caches, and cross-references NIST NVD CVE data with CISA KEV intelligence.
 """
-import os
+import asyncio
 import time
 import logging
 from typing import Dict, Any, List, Optional
@@ -11,11 +11,17 @@ from datetime import datetime, timezone, timedelta
 
 from app.services.cisa_service import get_kev_dict
 from app.models.schemas import VulnerabilityItem, KevDetails
+from app.core.config import get_settings
 
 logger = logging.getLogger("sentinel.nvd")
 
+settings = get_settings()
+
 NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CACHE_TTL_SECONDS = 1800  # 30 minutes cache
+NVD_API_TIMEOUT = 20.0
+NVD_MAX_RETRIES = 3
+NVD_BACKOFF_BASE = 2.0
 
 _nvd_cache: Dict[str, Any] = {
     "items": [],
@@ -24,6 +30,9 @@ _nvd_cache: Dict[str, Any] = {
     "data_source": "FALLBACK",
     "source": "NIST NVD + CISA KEV"
 }
+
+# Prevent concurrent cache refresh (cache stampede).
+_nvd_cache_lock = asyncio.Lock()
 
 # Rich baseline CVE intelligence dataset with real CVEs and complete CVSS/CWE metadata
 FALLBACK_NVD_DATA: List[Dict[str, Any]] = [
@@ -281,6 +290,87 @@ def _extract_references(cve_dict: Dict[str, Any]) -> List[str]:
     return [r.get("url") for r in refs if r.get("url")][:5]
 
 
+async def _fetch_nvd_with_retry(
+    client: httpx.AsyncClient,
+    params: Dict[str, Any],
+    headers: Dict[str, str]
+) -> Dict[str, Any]:
+    """Fetch NVD data with exponential backoff and retry on transient failures."""
+    last_exception: Optional[Exception] = None
+    for attempt in range(1, NVD_MAX_RETRIES + 1):
+        try:
+            resp = await client.get(NVD_URL, params=params, headers=headers, timeout=NVD_API_TIMEOUT)
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", NVD_BACKOFF_BASE ** attempt))
+                logger.warning(
+                    "NVD API rate limited",
+                    extra={"attempt": attempt, "retry_after": retry_after},
+                )
+                await asyncio.sleep(retry_after)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+            last_exception = exc
+            wait = NVD_BACKOFF_BASE ** attempt
+            logger.warning(
+                "NVD API request failed, retrying",
+                extra={"attempt": attempt, "error": str(exc), "wait": wait},
+            )
+            await asyncio.sleep(wait)
+    raise last_exception or RuntimeError("NVD API request failed after retries")
+
+
+async def _parse_nvd_items(data: Dict[str, Any], kev_dict: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Parse raw NVD response into normalized vulnerability items."""
+    parsed_items: List[Dict[str, Any]] = []
+    for item in data.get("vulnerabilities", []):
+        cve = item.get("cve", {})
+        cve_id = cve.get("id", "")
+        if not cve_id:
+            continue
+
+        desc = next((d.get("value", "") for d in cve.get("descriptions", []) if d.get("lang") == "en"), "")
+        metrics = cve.get("metrics", {})
+        cvss_score = None
+
+        for key in ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+            if metrics.get(key) and len(metrics[key]) > 0:
+                cvss_score = metrics[key][0].get("cvssData", {}).get("baseScore")
+                if cvss_score is not None:
+                    break
+
+        cwe = _extract_cwe(cve)
+        prods = _extract_products(cve)
+        refs = _extract_references(cve)
+        in_kev = cve_id in kev_dict
+        kev_data = kev_dict.get(cve_id)
+        kev_meta = None
+        if kev_data:
+            kev_meta = {
+                "date_added": kev_data.get("dateAdded"),
+                "due_date": kev_data.get("dueDate"),
+                "ransomware_use": kev_data.get("knownRansomwareCampaignUse", "Known"),
+                "short_description": kev_data.get("shortDescription")
+            }
+
+        parsed_items.append({
+            "id": cve_id,
+            "description": desc or "No description provided by NVD.",
+            "cvss": cvss_score,
+            "severity": _calculate_severity(cvss_score),
+            "published": cve.get("published"),
+            "modified": cve.get("lastModified"),
+            "cwe": cwe,
+            "affected_products": prods,
+            "references": refs,
+            "is_kev": in_kev,
+            "kev_details": kev_meta,
+            "source": "NVD + CISA KEV" if in_kev else "NVD"
+        })
+    return parsed_items
+
+
 async def fetch_recent_cves(
     force: bool = False,
     search: Optional[str] = None,
@@ -296,96 +386,68 @@ async def fetch_recent_cves(
     now = time.time()
     kev_dict = await get_kev_dict()
 
-    if force or not _nvd_cache["items"] or (now - _nvd_cache["last_fetched"]) > CACHE_TTL_SECONDS:
-        headers = {}
-        if os.getenv("NVD_API_KEY"):
-            headers["apiKey"] = os.getenv("NVD_API_KEY")
+    # Use a lock to prevent cache stampede when the cache is cold or expired.
+    async with _nvd_cache_lock:
+        should_refresh = force or not _nvd_cache["items"] or (now - _nvd_cache["last_fetched"]) > CACHE_TTL_SECONDS
 
-        try:
-            # Query recent CVEs (resultsPerPage 30)
-            async with httpx.AsyncClient(timeout=12) as client:
-                resp = await client.get(
-                    NVD_URL,
-                    params={"resultsPerPage": 30},
-                    headers=headers
+        if should_refresh:
+            headers = {}
+            if settings.nvd_api_key:
+                headers["apiKey"] = settings.nvd_api_key
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    data = await _fetch_nvd_with_retry(
+                        client,
+                        params={"resultsPerPage": 30},
+                        headers=headers,
+                    )
+
+                parsed_items = await _parse_nvd_items(data, kev_dict)
+
+                if parsed_items:
+                    # Merge with fallback high-severity items so critical KEV items are always visible
+                    cve_ids = {p["id"].strip().upper() for p in parsed_items}
+                    for fb in FALLBACK_NVD_DATA:
+                        if fb["id"].strip().upper() not in cve_ids:
+                            parsed_items.append(fb)
+
+                    _nvd_cache["items"] = parsed_items
+                    _nvd_cache["last_fetched"] = now
+                    _nvd_cache["data_source"] = "LIVE_NVD"
+                    _nvd_cache["last_updated"] = datetime.now(timezone.utc).isoformat()
+                    logger.info(f"Updated NVD cache with {len(parsed_items)} CVE records.")
+                else:
+                    # Empty live response: keep existing cache if available, otherwise fallback.
+                    if not _nvd_cache["items"]:
+                        _nvd_cache["items"] = list(FALLBACK_NVD_DATA)
+                        _nvd_cache["last_fetched"] = now
+                        _nvd_cache["data_source"] = "FALLBACK"
+                        _nvd_cache["last_updated"] = datetime.now(timezone.utc).isoformat()
+                    else:
+                        _nvd_cache["data_source"] = "CACHED_NVD"
+
+            except Exception as exc:
+                logger.warning(
+                    "NVD API request failed after retries. Serving resilient baseline intelligence.",
+                    extra={"error": str(exc)},
                 )
-                resp.raise_for_status()
-                data = resp.json()
-
-            parsed_items = []
-            for item in data.get("vulnerabilities", []):
-                cve = item.get("cve", {})
-                cve_id = cve.get("id", "")
-                if not cve_id:
-                    continue
-
-                desc = next((d.get("value", "") for d in cve.get("descriptions", []) if d.get("lang") == "en"), "")
-                metrics = cve.get("metrics", {})
-                cvss_score = None
-
-                for key in ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
-                    if metrics.get(key) and len(metrics[key]) > 0:
-                        cvss_score = metrics[key][0].get("cvssData", {}).get("baseScore")
-                        if cvss_score is not None:
-                            break
-
-                cwe = _extract_cwe(cve)
-                prods = _extract_products(cve)
-                refs = _extract_references(cve)
-                in_kev = cve_id in kev_dict
-                kev_data = kev_dict.get(cve_id)
-                kev_meta = None
-                if kev_data:
-                    kev_meta = {
-                        "date_added": kev_data.get("dateAdded"),
-                        "due_date": kev_data.get("dueDate"),
-                        "ransomware_use": kev_data.get("knownRansomwareCampaignUse", "Known"),
-                        "short_description": kev_data.get("shortDescription")
-                    }
-
-                parsed_items.append({
-                    "id": cve_id,
-                    "description": desc or "No description provided by NVD.",
-                    "cvss": cvss_score,
-                    "severity": _calculate_severity(cvss_score),
-                    "published": cve.get("published"),
-                    "modified": cve.get("lastModified"),
-                    "cwe": cwe,
-                    "affected_products": prods,
-                    "references": refs,
-                    "is_kev": in_kev,
-                    "kev_details": kev_meta,
-                    "source": "NVD + CISA KEV" if in_kev else "NVD"
-                })
-
-            if parsed_items:
-                # Merge with fallback high-severity items so critical KEV items are always visible
-                cve_ids = {p["id"].strip().upper() for p in parsed_items}
-                for fb in FALLBACK_NVD_DATA:
-                    if fb["id"].strip().upper() not in cve_ids:
-                        parsed_items.append(fb)
-
-                _nvd_cache["items"] = parsed_items
-                _nvd_cache["last_fetched"] = now
-                _nvd_cache["data_source"] = "LIVE_NVD"
-                _nvd_cache["last_updated"] = datetime.now(timezone.utc).isoformat()
-                logger.info(f"Updated NVD cache with {len(parsed_items)} CVE records.")
-
-        except Exception as exc:
-            logger.warning(f"NVD API request failed ({exc}). Serving resilient baseline intelligence.")
-            if not _nvd_cache["items"]:
-                _nvd_cache["items"] = list(FALLBACK_NVD_DATA)
-                _nvd_cache["last_fetched"] = now
-                _nvd_cache["data_source"] = "FALLBACK"
-                _nvd_cache["last_updated"] = datetime.now(timezone.utc).isoformat()
-            else:
-                _nvd_cache["data_source"] = "CACHED_NVD"
+                if not _nvd_cache["items"]:
+                    _nvd_cache["items"] = list(FALLBACK_NVD_DATA)
+                    _nvd_cache["last_fetched"] = now
+                    _nvd_cache["data_source"] = "FALLBACK"
+                    _nvd_cache["last_updated"] = datetime.now(timezone.utc).isoformat()
+                else:
+                    _nvd_cache["data_source"] = "CACHED_NVD"
 
     # Apply filters
     records = _nvd_cache["items"] or list(FALLBACK_NVD_DATA)
     current_data_source = _nvd_cache.get("data_source", "CACHED_NVD")
     if not _nvd_cache["last_fetched"]:
         current_data_source = "FALLBACK"
+
+    is_stale = (time.time() - _nvd_cache["last_fetched"]) > CACHE_TTL_SECONDS
+    is_cached = not is_stale and current_data_source in ("LIVE_NVD", "CACHED_NVD")
 
     # Re-verify KEV enrichment on cached items
     for item in records:
@@ -435,7 +497,8 @@ async def fetch_recent_cves(
         "source": "NIST National Vulnerability Database + CISA KEV",
         "data_source": current_data_source,
         "total": total_count,
-        "cached": (time.time() - _nvd_cache["last_fetched"]) < CACHE_TTL_SECONDS,
+        "cached": is_cached,
+        "stale": is_stale,
         "last_updated": _nvd_cache["last_updated"] or datetime.now(timezone.utc).isoformat(),
         "vulnerabilities": paginated_records
     }

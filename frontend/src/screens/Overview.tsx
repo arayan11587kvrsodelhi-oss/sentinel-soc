@@ -693,6 +693,8 @@ export default function Overview({ onNavigate }: OverviewProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [wsConnected, setWsConnected] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [systemHealth, setSystemHealth] = useState({
     api: "OPERATIONAL",
     websocket: "LIVE",
@@ -705,20 +707,23 @@ export default function Overview({ onNavigate }: OverviewProps) {
 
   // Track WebSocket connection and update status
   useEffect(() => {
-    // Monitor WebSocket connection status via wsManager
-    const checkWsStatus = () => {
-      // The wsManager maintains connection; we rely on message flow
-      // If we're receiving messages, WebSocket is live
-      setWsConnected(true)
-    }
-
-    checkWsStatus()
-    const statusInterval = setInterval(checkWsStatus, 5000)
-    return () => clearInterval(statusInterval)
+    const unsubscribe = wsManager.subscribeToState((state) => {
+      setWsConnected(state === "LIVE")
+      setSystemHealth((prev) => ({
+        ...prev,
+        websocket: state === "LIVE" ? "LIVE" : state,
+      }))
+    })
+    const initial = wsManager.getConnectionState()
+    setWsConnected(initial === "LIVE")
+    setSystemHealth((prev) => ({ ...prev, websocket: initial === "LIVE" ? "LIVE" : initial }))
+    return unsubscribe
   }, [])
 
   useEffect(() => {
     async function loadData() {
+      setIsLoading(true)
+      setLoadError(null)
       try {
         const [dashRes, incRes, threatRes] = await Promise.allSettled([
           getDashboard(),
@@ -726,17 +731,32 @@ export default function Overview({ onNavigate }: OverviewProps) {
           getThreats({ limit: 10 }),
         ])
 
+        const errors: string[] = []
         if (dashRes.status === "fulfilled" && dashRes.value) {
           setDashboardData(dashRes.value)
+        } else if (dashRes.status === "rejected") {
+          errors.push("dashboard")
         }
         if (incRes.status === "fulfilled" && incRes.value) {
           setActiveIncidents(incRes.value)
+        } else if (incRes.status === "rejected") {
+          errors.push("incidents")
         }
         if (threatRes.status === "fulfilled" && threatRes.value) {
           setRecentThreats(threatRes.value)
+        } else if (threatRes.status === "rejected") {
+          errors.push("events")
+        }
+
+        if (errors.length > 0) {
+          setLoadError(
+            `Could not load live ${errors.join(", ")} data. Showing cached telemetry fallback.`,
+          )
         }
       } catch (err) {
-        console.warn("Overview: Using cached telemetry fallback", err)
+        setLoadError("Could not load live telemetry. Showing cached fallback.")
+      } finally {
+        setIsLoading(false)
       }
     }
 

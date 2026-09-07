@@ -3,17 +3,19 @@ Sentinel AI Defensive Analyst Service
 Provides high-fidelity, structured defensive cybersecurity triage, MITRE ATT&CK mapping,
 fact vs inference separation, and actionable incident response playbooks.
 """
-import os
 import json
 import logging
+import re
 from typing import Dict, Any, Optional
 import httpx
 from datetime import datetime, timezone
 
 from app.models.schemas import AnalysisResponse, AnalysisRequest, EvidenceBreakdown
 from app.services.mitre_service import map_event_to_mitre, get_technique
+from app.core.config import get_settings
 
 logger = logging.getLogger("sentinel.ai")
+settings = get_settings()
 
 
 def _generate_expert_defensive_analysis(data: Dict[str, Any]) -> AnalysisResponse:
@@ -340,14 +342,44 @@ def _generate_expert_defensive_analysis(data: Dict[str, Any]) -> AnalysisRespons
     )
 
 
+def _scrub_secrets(value: str) -> str:
+    """Remove common secret patterns from strings sent to external LLMs."""
+    if not isinstance(value, str):
+        return value
+    # API keys, tokens, passwords in URLs or JSON.
+    patterns = [
+        (r"(?i)(api[_-]?key\s*[:=]\s*)['\"]?[\w\-]{8,}['\"]?", r"\1\"***\""),
+        (r"(?i)(token\s*[:=]\s*)['\"]?[\w\-]{8,}['\"]?", r"\1\"***\""),
+        (r"(?i)(password\s*[:=]\s*)['\"]?[^\s\"']+['\"]?", r"\1\"***\""),
+        (r"(?i)(authorization\s*[:=]\s*)['\"]?[\w\-]+['\"]?", r"\1\"***\""),
+        (r"(?i)(bearer\s+)['\"]?[\w\-]{8,}['\"]?", r"\1***"),
+    ]
+    for pattern, repl in patterns:
+        value = re.sub(pattern, repl, value)
+    return value
+
+
+def _prepare_llm_safe_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of analysis data with secrets and sensitive fields removed."""
+    safe = json.loads(json.dumps(data, default=str))
+    # Remove any field that might contain credentials or internal config.
+    sensitive_keys = {"api_key", "token", "password", "secret", "authorization", "private_key"}
+    for key in list(safe.keys()):
+        if key.lower() in sensitive_keys:
+            safe[key] = "***"
+        elif isinstance(safe[key], str):
+            safe[key] = _scrub_secrets(safe[key])
+    return safe
+
+
 async def analyze_incident(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Perform deep defensive analysis on a security event or incident.
     Seamlessly uses configured LLM provider or expert defensive heuristic engine.
     """
-    api_key = os.getenv("AI_API_KEY")
-    api_base_url = os.getenv("AI_API_BASE_URL")
-    ai_model = os.getenv("AI_MODEL", "gpt-3.5-turbo")
+    api_key = settings.ai_api_key
+    api_base_url = settings.ai_api_base_url
+    ai_model = settings.ai_model
 
     # If no LLM credentials configured, immediately return rich expert rule-based analysis
     if not api_key or not api_base_url:
@@ -355,11 +387,12 @@ async def analyze_incident(data: Dict[str, Any]) -> Dict[str, Any]:
         return expert_res.model_dump()
 
     # If LLM configured, prompt defensively with strict JSON schema
+    safe_data = _prepare_llm_safe_data(data)
     prompt = f"""
 You are Sentinel AI, an expert defensive cybersecurity analyst in a SOC.
 Analyze the following security telemetry defensively and return a strictly valid JSON response:
 Telemetry Data:
-{json.dumps(data)}
+{json.dumps(safe_data)}
 
 Required JSON Schema:
 {{
@@ -388,7 +421,7 @@ Do NOT include any offensive instructions or markdown formatting. Output raw JSO
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.post(api_base_url, json=payload, headers=headers)
             resp.raise_for_status()
             res_json = resp.json()

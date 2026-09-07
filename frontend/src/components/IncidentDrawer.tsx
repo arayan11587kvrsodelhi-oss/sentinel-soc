@@ -118,17 +118,17 @@ export default function IncidentDrawer({
   const handleExecuteAction = async (actionType: string) => {
     setSimulatingAction(actionType)
     try {
-      const targetIp =
+      const target =
         incident.source_ip ||
         (incident.source_ips && incident.source_ips[0]) ||
-        "192.168.1.105"
-      const targetHost = incident.target || "internal-asset"
+        incident.target ||
+        "internal-asset"
       const res = await simulateResponseAction({
         action_type: actionType,
-        target_ip: targetIp,
-        target_host: targetHost,
-        requested_by: "SOC Analyst Aryan",
-        details: `Simulated defensive containment for ${incident.incident_id}`,
+        target,
+        incident_id: incident.incident_id,
+        triggered_by: "SOC Analyst",
+        reason: `Defensive containment for ${incident.incident_id}`,
       })
       setActionFeedback((prev) => ({
         ...prev,
@@ -137,7 +137,7 @@ export default function IncidentDrawer({
     } catch (e: any) {
       setActionFeedback((prev) => ({
         ...prev,
-        [actionType]: `Simulated action logged: completed safely.`,
+        [actionType]: `Failed: ${e?.message || "Unknown error"}`,
       }))
     } finally {
       setSimulatingAction(null)

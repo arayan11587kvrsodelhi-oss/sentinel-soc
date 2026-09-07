@@ -1,140 +1,128 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import {
+  SimulatedActionRecord,
+  simulateResponseAction,
+  getResponseAuditLog,
+} from "../lib/sentinel-api"
 
-interface SimResult {
-  action: string
-
+interface ActionDef {
+  id: string
+  title: string
+  desc: string
   target: string
-
-  result: string
-
-  time: string
+  icon: string
+  color: string
+  detail: string
 }
+
+const actions: ActionDef[] = [
+  {
+    id: "HOST_ISOLATION",
+    title: "Isolate Host",
+    desc: "Simulated network isolation — removes host from all network segments",
+    target: "auth-01",
+    icon: "⊘",
+    color: "#FF4D5E",
+    detail:
+      "Simulates blocking all inbound/outbound traffic to the target host at the network switch level.",
+  },
+  {
+    id: "IP_BAN",
+    title: "Block IP",
+    desc: "Simulated firewall rule — blocks source IP at perimeter",
+    target: "192.168.1.42",
+    icon: "⊗",
+    color: "#FF8A4C",
+    detail:
+      "Simulates adding a deny rule for 192.168.1.42 across all perimeter firewall devices.",
+  },
+  {
+    id: "CREDENTIAL_REVOCATION",
+    title: "Disable Account",
+    desc: "Simulated account containment — disables compromised user account",
+    target: "admin",
+    icon: "⊘",
+    color: "#F4C95D",
+    detail:
+      "Simulates disabling the affected account in the identity provider and invalidating active sessions.",
+  },
+  {
+    id: "FORCE_PASSWORD_RESET",
+    title: "Force Password Reset",
+    desc: "Simulated credential rotation for targeted accounts",
+    target: "admin, root, svc_backup",
+    icon: "↺",
+    color: "#7C8CFF",
+    detail:
+      "Simulates forcing an immediate password change for all accounts targeted in the attack.",
+  },
+  {
+    id: "CAPTURE_MEMORY",
+    title: "Capture Memory Dump",
+    desc: "Simulated forensic memory capture for analysis",
+    target: "auth-01",
+    icon: "⊡",
+    color: "#56B4FF",
+    detail:
+      "Simulates initiating a live memory dump from the affected system for forensic analysis.",
+  },
+  {
+    id: "SNAPSHOT",
+    title: "Create System Snapshot",
+    desc: "Simulated disk snapshot for forensic preservation",
+    target: "auth-01",
+    icon: "◉",
+    color: "#42D392",
+    detail:
+      "Simulates creating a point-in-time disk snapshot to preserve evidence.",
+  },
+]
 
 export default function ResponseCenter() {
   const [simulating, setSimulating] = useState<string | null>(null)
+  const [results, setResults] = useState<SimulatedActionRecord[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const [results, setResults] = useState<SimResult[]>([])
+  useEffect(() => {
+    let cancelled = false
+    setIsLoading(true)
+    setError(null)
+    getResponseAuditLog(50)
+      .then((data) => {
+        if (cancelled) return
+        setResults(data)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Failed to load audit log")
+      })
+      .finally(() => {
+        if (cancelled) return
+        setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  const runSimulation = (action: string, target: string) => {
-    setSimulating(action)
-
-    setTimeout(() => {
-      const now = new Date()
-
-      const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} UTC`
-
-      setResults((prev) => [
-        { action, target, result: "SUCCESS", time },
-        ...prev,
-      ])
-
+  const runSimulation = async (actionId: string, target: string) => {
+    setSimulating(actionId)
+    setError(null)
+    try {
+      const record = await simulateResponseAction({
+        action_type: actionId,
+        target,
+        triggered_by: "SOC Analyst",
+        reason: `Manual response action from Response Center`,
+      })
+      setResults((prev) => [record, ...prev])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Response action failed")
+    } finally {
       setSimulating(null)
-    }, 2000)
+    }
   }
-
-  const actions = [
-    {
-      id: "ISOLATE_HOST",
-
-      title: "Isolate Host",
-
-      desc: "Simulated network isolation — removes host from all network segments",
-
-      target: "auth-01",
-
-      icon: "⊘",
-
-      color: "#FF4D5E",
-
-      detail:
-        "Simulates blocking all inbound/outbound traffic to the target host at the network switch level.",
-    },
-
-    {
-      id: "BLOCK_IP",
-
-      title: "Block IP",
-
-      desc: "Simulated firewall rule — blocks source IP at perimeter",
-
-      target: "192.168.1.42",
-
-      icon: "⊗",
-
-      color: "#FF8A4C",
-
-      detail:
-        "Simulates adding a deny rule for 192.168.1.42 across all perimeter firewall devices.",
-    },
-
-    {
-      id: "DISABLE_ACCOUNT",
-
-      title: "Disable Account",
-
-      desc: "Simulated account containment — disables compromised user account",
-
-      target: "admin",
-
-      icon: "⊘",
-
-      color: "#F4C95D",
-
-      detail:
-        "Simulates disabling the affected account in the identity provider and invalidating active sessions.",
-    },
-
-    {
-      id: "FORCE_PASSWORD_RESET",
-
-      title: "Force Password Reset",
-
-      desc: "Simulated credential rotation for targeted accounts",
-
-      target: "admin, root, svc_backup",
-
-      icon: "↺",
-
-      color: "#7C8CFF",
-
-      detail:
-        "Simulates forcing an immediate password change for all accounts targeted in the attack.",
-    },
-
-    {
-      id: "CAPTURE_MEMORY",
-
-      title: "Capture Memory Dump",
-
-      desc: "Simulated forensic memory capture for analysis",
-
-      target: "auth-01",
-
-      icon: "⊡",
-
-      color: "#56B4FF",
-
-      detail:
-        "Simulates initiating a live memory dump from the affected system for forensic analysis.",
-    },
-
-    {
-      id: "SNAPSHOT",
-
-      title: "Create System Snapshot",
-
-      desc: "Simulated disk snapshot for forensic preservation",
-
-      target: "auth-01",
-
-      icon: "◉",
-
-      color: "#42D392",
-
-      detail:
-        "Simulates creating a point-in-time disk snapshot to preserve evidence.",
-    },
-  ]
 
   return (
     <div className="space-y-5">
@@ -145,7 +133,7 @@ export default function ResponseCenter() {
             Response Center
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "#9AA8B8" }}>
-            Defensive response playbooks — Incident INC-2026-00842
+            Defensive response playbooks — simulated containment actions
           </p>
         </div>
       </div>
@@ -155,7 +143,6 @@ export default function ResponseCenter() {
         className="rounded-xl p-4 flex items-start gap-4"
         style={{
           background: "#F4C95D08",
-
           border: "2px solid #F4C95D40",
         }}
       >
@@ -189,6 +176,22 @@ export default function ResponseCenter() {
         </div>
       </div>
 
+      {error && (
+        <div
+          className="rounded-xl p-4"
+          style={{
+            background: "#FF4D5E08",
+            border: "1px solid #FF4D5E40",
+            color: "#FF4D5E",
+          }}
+        >
+          <p className="text-sm font-medium">Action failed</p>
+          <p className="text-xs mt-1" style={{ color: "#FF8A8F" }}>
+            {error}
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-5 gap-5">
         {/* Actions */}
         <div className="col-span-3 space-y-3">
@@ -200,8 +203,7 @@ export default function ResponseCenter() {
           </span>
           {actions.map((action) => {
             const isRunning = simulating === action.id
-
-            const hasDone = results.some((r) => r.action === action.id)
+            const hasDone = results.some((r) => r.action_type === action.id)
 
             return (
               <div
@@ -325,7 +327,16 @@ export default function ResponseCenter() {
               SIMULATION LOG
             </span>
 
-            {results.length === 0 ? (
+            {isLoading ? (
+              <div
+                className="rounded-lg p-6 text-center"
+                style={{ background: "#0D131D", border: "1px solid #1D2938" }}
+              >
+                <p className="text-xs" style={{ color: "#627083" }}>
+                  Loading audit log…
+                </p>
+              </div>
+            ) : results.length === 0 ? (
               <div
                 className="rounded-lg p-6 text-center"
                 style={{ background: "#0D131D", border: "1px solid #1D2938" }}
@@ -339,10 +350,10 @@ export default function ResponseCenter() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
                 {results.map((res, i) => (
                   <div
-                    key={i}
+                    key={`${res.action_id}-${i}`}
                     className="rounded-lg p-3"
                     style={{
                       background: "#0D131D",
@@ -358,7 +369,7 @@ export default function ResponseCenter() {
                         className="text-xs font-semibold"
                         style={{ color: "#42D392" }}
                       >
-                        ✓ SIMULATION COMPLETE
+                        ✓ {res.status}
                       </span>
                     </div>
                     <div className="space-y-1 text-xs">
@@ -368,7 +379,7 @@ export default function ResponseCenter() {
                           className="font-mono font-medium"
                           style={{ color: "#F4F7FA" }}
                         >
-                          {res.action.replace(/_/g, " ")}
+                          {res.action_label}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -381,21 +392,16 @@ export default function ResponseCenter() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span style={{ color: "#627083" }}>Result</span>
-                        <span
-                          className="font-medium"
-                          style={{ color: "#42D392" }}
-                        >
-                          {res.result}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
                         <span style={{ color: "#627083" }}>Time</span>
                         <span
                           className="font-mono text-[10px]"
                           style={{ color: "#627083" }}
                         >
-                          {res.time}
+                          {new Date(res.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
                         </span>
                       </div>
                     </div>
@@ -416,46 +422,6 @@ export default function ResponseCenter() {
                 ◆ All actions above are simulated · No real changes were made
               </div>
             )}
-          </div>
-
-          {/* Incident Summary */}
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "#111925", border: "1px solid #1D2938" }}
-          >
-            <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-3"
-              style={{ color: "#627083" }}
-            >
-              INCIDENT CONTEXT
-            </span>
-            <div className="space-y-2">
-              {[
-                { k: "Incident", v: "INC-2026-00842" },
-
-                { k: "Type", v: "Credential Attack" },
-
-                { k: "Severity", v: "CRITICAL", c: "#FF4D5E" },
-
-                { k: "Source IP", v: "192.168.1.42" },
-
-                { k: "Target", v: "auth-01" },
-
-                { k: "MITRE", v: "T1110", c: "#7C8CFF" },
-              ].map((item) => (
-                <div key={item.k} className="flex items-center justify-between">
-                  <span className="text-xs" style={{ color: "#627083" }}>
-                    {item.k}
-                  </span>
-                  <span
-                    className={`text-xs font-medium font-mono`}
-                    style={{ color: (item as { c?: string }).c ?? "#9AA8B8" }}
-                  >
-                    {item.v}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>

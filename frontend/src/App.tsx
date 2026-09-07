@@ -27,6 +27,36 @@ import SystemHealth from "./screens/SystemHealth"
 import AuditLog from "./screens/AuditLog"
 
 import { CustomCursor } from "./components/CustomCursor"
+import { wsManager, type WsConnectionState } from "./lib/sentinel-api"
+
+function LiveIndicator({ className = "" }: { className?: string }) {
+  const [wsState, setWsState] = useState<WsConnectionState>("CONNECTING")
+
+  useEffect(() => {
+    const unsubscribe = wsManager.subscribeToState(setWsState)
+    setWsState(wsManager.getConnectionState())
+    return unsubscribe
+  }, [])
+
+  const color =
+    wsState === "LIVE"
+      ? "#42D392"
+      : wsState === "OFFLINE"
+        ? "#FF4D5E"
+        : "#F4C95D"
+
+  return (
+    <div className={`flex items-center gap-1.5 ${className}`}>
+      <div
+        className={`w-1.5 h-1.5 rounded-full ${wsState === "LIVE" || wsState === "CONNECTING" || wsState === "RECONNECTING" ? "animate-pulse" : ""}`}
+        style={{ background: color }}
+      />
+      <span className="font-mono text-[11px]" style={{ color }}>
+        {wsState}
+      </span>
+    </div>
+  )
+}
 
 type Screen = "overview" | "incidents" | "incident-investigation" | "ai-analyst" | "detection-rules" | "live-events" | "threat-intel" | "vulnerabilities" | "mitre" | "response" | "audit-log" | "health"
 
@@ -247,6 +277,25 @@ interface SidebarProps {
 }
 
 function Sidebar({ current, onNavigate }: SidebarProps) {
+  const [wsState, setWsState] = useState<WsConnectionState>("CONNECTING")
+
+  useEffect(() => {
+    const unsubscribe = wsManager.subscribeToState(setWsState)
+    // Emit initial state immediately.
+    setWsState(wsManager.getConnectionState())
+    return unsubscribe
+  }, [])
+
+  const wsConfig: Record<WsConnectionState, { label: string; color: string; pulse: boolean }> = {
+    CONNECTING: { label: "CONNECTING", color: "#F4C95D", pulse: true },
+    LIVE: { label: "LIVE", color: "#42D392", pulse: true },
+    RECONNECTING: { label: "RECONNECTING", color: "#FF8A4C", pulse: true },
+    STALE: { label: "STALE", color: "#F4C95D", pulse: false },
+    OFFLINE: { label: "OFFLINE", color: "#FF4D5E", pulse: false },
+  }
+
+  const wsStatus = wsConfig[wsState]
+
   return (
     <aside
       className="flex flex-col h-screen flex-shrink-0"
@@ -542,15 +591,18 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
         }}
       >
         <div className="flex items-center gap-1.5 mb-2.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse" />
+          <div
+            className={`w-1.5 h-1.5 rounded-full ${wsStatus.pulse ? "animate-pulse" : ""}`}
+            style={{ background: wsStatus.color }}
+          />
 
           <span
             className="text-xs font-semibold"
             style={{
-              color: "#42D392",
+              color: wsStatus.color,
             }}
           >
-            LIVE
+            {wsStatus.label}
           </span>
         </div>
 
@@ -558,25 +610,17 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
           {[
             {
               label: "API",
-
               status: "OPERATIONAL",
-
               color: "#42D392",
             },
-
             {
               label: "WS",
-
-              status: "CONNECTED",
-
-              color: "#42D392",
+              status: wsStatus.label,
+              color: wsStatus.color,
             },
-
             {
               label: "DB",
-
               status: "OPERATIONAL",
-
               color: "#42D392",
             },
           ].map((s) => (
@@ -627,7 +671,6 @@ interface TopBarProps {
 
 function TopBar({ title, onNavigate }: TopBarProps) {
   const [searchVal, setSearchVal] = useState("")
-
   const [showNotifications, setShowNotifications] = useState(false)
 
   const notifRef = useRef<HTMLDivElement>(null)
@@ -793,15 +836,9 @@ function TopBar({ title, onNavigate }: TopBarProps) {
         {/* Live */}
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs"
-          style={{
-            background: "rgba(66,211,146,0.06)",
-
-            color: "#42D392",
-          }}
+          style={{ background: "rgba(7, 11, 18, 0.5)" }}
         >
-          <div className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse" />
-
-          <span className="font-mono text-[11px]">LIVE</span>
+          <LiveIndicator />
         </div>
 
         {/* Notifications */}
@@ -1251,7 +1288,7 @@ export default function App() {
                 ◆ TRAINING
               </div>
 
-              <div className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse" />
+              <LiveIndicator />
             </div>
           </header>
         ) : (

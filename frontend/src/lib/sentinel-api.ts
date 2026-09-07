@@ -175,6 +175,7 @@ export interface VulnerabilityResponse {
   data_source?: string
   last_updated: string
   cached: boolean
+  stale?: boolean
   vulnerabilities: VulnerabilityItem[]
 }
 
@@ -198,6 +199,7 @@ export interface KevResponse {
   catalog_size: number
   last_updated: string
   cached: boolean
+  stale?: boolean
   vulnerabilities: KevItem[]
 }
 
@@ -242,21 +244,29 @@ export interface AnalysisRequest {
   details?: string
   source_ip?: string
   target?: string
-  context?: Record<string, any>
+  context?: Record<string, unknown>
 }
 
 export interface SimulatedActionRecord {
   action_id: string
   action_type: string
-  target_ip: string
-  target_host?: string
-  status: string
+  action_label: string
+  target: string
+  incident_id?: string | null
   timestamp: string
-  execution_time_ms: number
-  requested_by: string
+  triggered_by: string
+  reason: string
+  status: string
   details: string
-  remediation_playbook?: string
   simulation: boolean
+}
+
+export interface SimulatedActionRequest {
+  action_type: string
+  target: string
+  incident_id?: string
+  reason?: string
+  triggered_by?: string
 }
 
 export interface MitreMatrixItem {
@@ -674,13 +684,7 @@ export const getKevCatalog = (params?: {
   )
 }
 
-export const simulateResponseAction = (payload: {
-  action_type: string
-  target_ip: string
-  target_host?: string
-  requested_by?: string
-  details?: string
-}) =>
+export const simulateResponseAction = (payload: SimulatedActionRequest) =>
   sentinelFetch<SimulatedActionRecord>("/api/response/simulate-action", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -700,15 +704,27 @@ export const getMitreMatrix = () =>
    REAL-TIME WEBSOCKET MANAGER
    ========================================================= */
 
-type WsListener = (data: any) => void
+export type WsConnectionState =
+  | "CONNECTING"
+  | "LIVE"
+  | "RECONNECTING"
+  | "STALE"
+  | "OFFLINE"
+
+type WsListener = (data: unknown) => void
+type StateListener = (state: WsConnectionState) => void
 
 class SentinelWsManager {
   private ws: WebSocket | null = null
   private listeners: Set<WsListener> = new Set()
-  private reconnectTimer: any = null
-  private pingTimer: any = null
+  private stateListeners: Set<StateListener> = new Set()
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private pingTimer: ReturnType<typeof setInterval> | null = null
+  private staleTimer: ReturnType<typeof setTimeout> | null = null
   private isConnecting: boolean = false
   private shouldConnect: boolean = true
+  private reconnectAttempt: number = 0
+  private lastPongAt: number = 0
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -716,28 +732,87 @@ class SentinelWsManager {
     }
   }
 
+  private _setState(state: WsConnectionState) {
+    this.stateListeners.forEach((listener) => {
+      try {
+        listener(state)
+      } catch (err) {
+        console.error("Error in Sentinel WS state listener:", err)
+      }
+    })
+  }
+
+  private _scheduleReconnect() {
+    if (!this.shouldConnect) return
+    clearTimeout(this.reconnectTimer)
+    // Exponential backoff: 1s, 2s, 4s, 8s, 8s, 8s... capped at 8s.
+    const delay = Math.min(1000 * 2 ** this.reconnectAttempt, 8000)
+    this.reconnectAttempt += 1
+    this._setState("RECONNECTING")
+    this.reconnectTimer = setTimeout(() => this.connect(), delay)
+  }
+
+  private _markStale() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this._setState("STALE")
+    }
+  }
+
+  public getConnectionState(): WsConnectionState {
+    if (this.isConnecting) return "CONNECTING"
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      // If we haven't received a PONG recently, report stale.
+      const now = Date.now()
+      if (this.lastPongAt && now - this.lastPongAt > 45000) {
+        return "STALE"
+      }
+      return "LIVE"
+    }
+    if (this.shouldConnect) return "RECONNECTING"
+    return "OFFLINE"
+  }
+
   public connect() {
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN))
       return
     this.isConnecting = true
+    this._setState("CONNECTING")
 
     try {
       this.ws = new WebSocket(SENTINEL_WS)
 
       this.ws.onopen = () => {
         this.isConnecting = false
-        // Ping every 25 seconds
+        this.reconnectAttempt = 0
+        this.lastPongAt = Date.now()
+        this._setState("LIVE")
+
+        // Heartbeat: send PING every 25 seconds.
         clearInterval(this.pingTimer)
         this.pingTimer = setInterval(() => {
           if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({ type: "PING" }))
           }
         }, 25000)
+
+        // Mark stale if no PONG received within 40 seconds.
+        clearTimeout(this.staleTimer)
+        this.staleTimer = setTimeout(() => this._markStale(), 40000)
       }
 
       this.ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data)
+          const data = JSON.parse(event.data) as Record<string, unknown>
+          if (data.type === "PONG") {
+            this.lastPongAt = Date.now()
+            if (this.getConnectionState() === "STALE") {
+              this._setState("LIVE")
+            }
+            // Reset stale timer.
+            clearTimeout(this.staleTimer)
+            this.staleTimer = setTimeout(() => this._markStale(), 40000)
+            return
+          }
           this.listeners.forEach((listener) => {
             try {
               listener(data)
@@ -753,19 +828,24 @@ class SentinelWsManager {
       this.ws.onclose = () => {
         this.isConnecting = false
         clearInterval(this.pingTimer)
+        clearTimeout(this.staleTimer)
+        this.ws = null
         if (this.shouldConnect) {
-          clearTimeout(this.reconnectTimer)
-          this.reconnectTimer = setTimeout(() => this.connect(), 4000)
+          this._setState("RECONNECTING")
+          this._scheduleReconnect()
+        } else {
+          this._setState("OFFLINE")
         }
       }
 
       this.ws.onerror = () => {
         this.isConnecting = false
+        this._setState("RECONNECTING")
       }
     } catch (e) {
       this.isConnecting = false
-      clearTimeout(this.reconnectTimer)
-      this.reconnectTimer = setTimeout(() => this.connect(), 5000)
+      this._setState("RECONNECTING")
+      this._scheduleReconnect()
     }
   }
 
@@ -779,6 +859,15 @@ class SentinelWsManager {
     }
   }
 
+  public subscribeToState(listener: StateListener): () => void {
+    this.stateListeners.add(listener)
+    // Immediately emit current state.
+    listener(this.getConnectionState())
+    return () => {
+      this.stateListeners.delete(listener)
+    }
+  }
+
   public triggerScenario(scenarioId: string) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(
@@ -788,6 +877,18 @@ class SentinelWsManager {
         }),
       )
     }
+  }
+
+  public disconnect() {
+    this.shouldConnect = false
+    clearTimeout(this.reconnectTimer)
+    clearInterval(this.pingTimer)
+    clearTimeout(this.staleTimer)
+    if (this.ws) {
+      this.ws.close()
+      this.ws = null
+    }
+    this._setState("OFFLINE")
   }
 }
 

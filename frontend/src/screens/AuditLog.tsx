@@ -190,17 +190,17 @@ export default function AuditLog() {
               minute: "2-digit",
               second: "2-digit",
             }),
-            actor: item.requested_by || "analyst@sentinel",
-            action: item.action_type || "SIMULATE_RESPONSE_ACTION",
-            target: item.target_ip || item.target_host || "192.168.1.105",
+            actor: item.triggered_by || "analyst@sentinel",
+            action: item.action_label || item.action_type || "SIMULATE_RESPONSE_ACTION",
+            target: item.target || "internal-asset",
             result: item.status || "SUCCESS",
-            category: "Response",
+            category: "Response" as const,
             detail: item.details,
           }))
           setEvents((prev) => [...mapped, ...prev])
         }
       } catch (e) {
-        // fallback
+        // Keep fallback demo events if backend is unavailable.
       }
     }
     loadBackendAudit()

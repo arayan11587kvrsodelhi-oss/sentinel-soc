@@ -2,17 +2,24 @@
 CISA Known Exploited Vulnerabilities (KEV) Service
 Fetches, caches, and indexes the official CISA KEV catalog.
 """
-import os
+import asyncio
 import time
 import logging
 from typing import Dict, Any, List, Optional
 import httpx
 from datetime import datetime, timezone
 
+from app.core.config import get_settings
+
 logger = logging.getLogger("sentinel.cisa")
+
+settings = get_settings()
 
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 CACHE_TTL_SECONDS = 3600  # 1 hour cache
+KEV_API_TIMEOUT = 20.0
+KEV_MAX_RETRIES = 3
+KEV_BACKOFF_BASE = 2.0
 
 _kev_cache: Dict[str, Any] = {
     "data": [],
@@ -23,6 +30,9 @@ _kev_cache: Dict[str, Any] = {
     "data_source": "FALLBACK",
     "source": "CISA KEV Catalog"
 }
+
+# Prevent concurrent cache refresh.
+_kev_cache_lock = asyncio.Lock()
 
 FALLBACK_KEV_DATA = [
     {
@@ -136,37 +146,72 @@ def _init_fallback():
 _init_fallback()
 
 
+async def _fetch_kev_with_retry(client: httpx.AsyncClient) -> Dict[str, Any]:
+    """Fetch CISA KEV feed with exponential backoff and retry."""
+    last_exception: Optional[Exception] = None
+    for attempt in range(1, KEV_MAX_RETRIES + 1):
+        try:
+            resp = await client.get(CISA_KEV_URL, timeout=KEV_API_TIMEOUT)
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", KEV_BACKOFF_BASE ** attempt))
+                logger.warning(
+                    "CISA KEV API rate limited",
+                    extra={"attempt": attempt, "retry_after": retry_after},
+                )
+                await asyncio.sleep(retry_after)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+            last_exception = exc
+            wait = KEV_BACKOFF_BASE ** attempt
+            logger.warning(
+                "CISA KEV request failed, retrying",
+                extra={"attempt": attempt, "error": str(exc), "wait": wait},
+            )
+            await asyncio.sleep(wait)
+    raise last_exception or RuntimeError("CISA KEV request failed after retries")
+
+
 async def refresh_kev_cache(force: bool = False) -> Dict[str, Any]:
     """Fetch the latest CISA KEV catalog from official feed and update memory cache."""
     now = time.time()
-    if not force and _kev_cache["dict"] and (now - _kev_cache["last_fetched"]) < CACHE_TTL_SECONDS:
-        return _kev_cache
 
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(CISA_KEV_URL)
-            resp.raise_for_status()
-            data = resp.json()
+    async with _kev_cache_lock:
+        if not force and _kev_cache["dict"] and (now - _kev_cache["last_fetched"]) < CACHE_TTL_SECONDS:
+            return _kev_cache
 
-        vulns = data.get("vulnerabilities", [])
-        if vulns:
-            _kev_cache["data"] = vulns
-            _kev_cache["dict"] = {
-                item.get("cveID", "").strip().upper(): item
-                for item in vulns
-                if item.get("cveID")
-            }
-            _kev_cache["total"] = data.get("count", len(vulns))
-            _kev_cache["last_fetched"] = now
-            _kev_cache["data_source"] = "LIVE_CISA_KEV"
-            _kev_cache["last_updated"] = data.get("dateReleased", datetime.now(timezone.utc).isoformat())
-            logger.info(f"Loaded {len(_kev_cache['dict'])} vulnerabilities from CISA KEV feed.")
-    except Exception as exc:
-        logger.warning(f"Failed to fetch live CISA KEV feed: {exc}. Using cached/fallback catalog.")
-        if not _kev_cache["dict"]:
-            _init_fallback()
-        else:
-            _kev_cache["data_source"] = "CACHED_CISA_KEV"
+        try:
+            async with httpx.AsyncClient() as client:
+                data = await _fetch_kev_with_retry(client)
+
+            vulns = data.get("vulnerabilities", [])
+            if vulns:
+                _kev_cache["data"] = vulns
+                _kev_cache["dict"] = {
+                    item.get("cveID", "").strip().upper(): item
+                    for item in vulns
+                    if item.get("cveID")
+                }
+                _kev_cache["total"] = data.get("count", len(vulns))
+                _kev_cache["last_fetched"] = now
+                _kev_cache["data_source"] = "LIVE_CISA_KEV"
+                _kev_cache["last_updated"] = data.get("dateReleased", datetime.now(timezone.utc).isoformat())
+                logger.info(f"Loaded {len(_kev_cache['dict'])} vulnerabilities from CISA KEV feed.")
+            else:
+                if not _kev_cache["dict"]:
+                    _init_fallback()
+                else:
+                    _kev_cache["data_source"] = "CACHED_CISA_KEV"
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch live CISA KEV feed after retries. Using cached/fallback catalog.",
+                extra={"error": str(exc)},
+            )
+            if not _kev_cache["dict"]:
+                _init_fallback()
+            else:
+                _kev_cache["data_source"] = "CACHED_CISA_KEV"
 
     return _kev_cache
 
@@ -216,13 +261,17 @@ async def fetch_kev_catalog(
     total_matches = len(items)
     paginated = items[offset: offset + limit]
 
+    is_stale = (time.time() - cache["last_fetched"]) > CACHE_TTL_SECONDS
+    is_cached = not is_stale and cache.get("data_source") in ("LIVE_CISA_KEV", "CACHED_CISA_KEV")
+
     return {
         "source": "CISA Known Exploited Vulnerabilities Catalog",
         "data_source": cache.get("data_source", "CACHED_CISA_KEV"),
         "total": total_matches,
         "catalog_size": cache["total"],
         "last_updated": cache["last_updated"] or datetime.now(timezone.utc).isoformat(),
-        "cached": (time.time() - cache["last_fetched"]) < CACHE_TTL_SECONDS,
+        "cached": is_cached,
+        "stale": is_stale,
         "vulnerabilities": paginated
     }
 

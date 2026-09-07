@@ -3,7 +3,6 @@ SentinelSOC Automated Response & Playbook Simulation Service
 Executes purely simulated containment actions (IP Ban, Firewall Block, Credential Revocation, Host Isolation).
 All actions are strictly simulated, auditable, and safe. Zero real-world infrastructure modification.
 """
-import os
 import json
 import sqlite3
 import logging
@@ -12,8 +11,10 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
+
 logger = logging.getLogger("sentinel.response")
-DB_PATH = os.getenv("SQLITE_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "sentinel.db"))
+DB_PATH = get_settings().resolved_sqlite_db_path
 
 
 class SimulatedActionRequest(BaseModel):
@@ -68,6 +69,9 @@ class ResponseService:
                         simulation INTEGER NOT NULL DEFAULT 1
                     )
                 """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_response_actions_timestamp ON response_actions(timestamp DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_response_actions_incident_id ON response_actions(incident_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_response_actions_action_type ON response_actions(action_type)")
                 conn.commit()
         except Exception as e:
             logger.warning(f"Could not initialize response_actions SQLite table: {e}")
