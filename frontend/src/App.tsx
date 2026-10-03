@@ -27,6 +27,8 @@ import SystemHealth from "./screens/SystemHealth"
 import AuditLog from "./screens/AuditLog"
 
 import { CustomCursor } from "./components/CustomCursor"
+import { Button, SOCIcon, StatusTag, type IconName } from "./components/ui"
+import { surface, text } from "./lib/design-tokens"
 import { wsManager, type WsConnectionState } from "./lib/sentinel-api"
 
 function LiveIndicator({ className = "" }: { className?: string }) {
@@ -40,18 +42,19 @@ function LiveIndicator({ className = "" }: { className?: string }) {
 
   const color =
     wsState === "LIVE"
-      ? "#42D392"
+      ? text.success
       : wsState === "OFFLINE"
-        ? "#FF4D5E"
-        : "#F4C95D"
+        ? text.danger
+        : text.warning
 
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
-      <div
+      <span
         className={`w-1.5 h-1.5 rounded-full ${wsState === "LIVE" || wsState === "CONNECTING" || wsState === "RECONNECTING" ? "animate-pulse" : ""}`}
         style={{ background: color }}
+        aria-hidden="true"
       />
-      <span className="font-mono text-[11px]" style={{ color }}>
+      <span className="font-mono text-xs" style={{ color }}>
         {wsState}
       </span>
     </div>
@@ -73,7 +76,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: "overview", label: "Overview" },
 
-  { group: "OPERATIONS" },
+  { group: "Operations" },
 
   { id: "incidents", label: "Incidents", indent: true },
 
@@ -81,7 +84,7 @@ const navItems: NavItem[] = [
 
   { id: "live-events", label: "Live Events", indent: true },
 
-  { group: "INTELLIGENCE" },
+  { group: "Intelligence" },
 
   { id: "threat-intel", label: "Threat Intelligence", indent: true },
 
@@ -89,17 +92,17 @@ const navItems: NavItem[] = [
 
   { id: "mitre", label: "MITRE ATT&CK", indent: true },
 
-  { group: "ANALYSIS" },
+  { group: "Analysis" },
 
   { id: "ai-analyst", label: "AI Analyst", indent: true },
 
-  { group: "RESPONSE" },
+  { group: "Response" },
 
   { id: "response", label: "Playbooks", indent: true },
 
   { id: "audit-log", label: "Audit Log", indent: true },
 
-  { group: "SYSTEM" },
+  { group: "System" },
 
   { id: "health", label: "Health", indent: true },
 ]
@@ -182,7 +185,7 @@ function SentinelEmblem({ size = 40 }: { size?: number }) {
     </div>
   )
 } /* =========================================================
-   SIDEBAR LOGO
+   Sidebar Logo
    ========================================================= */
 
 function SentinelLogo() {
@@ -315,7 +318,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
             return (
               <div
                 key={`group-${i}`}
-                className="px-5 pt-5 pb-1.5 text-[10px] font-semibold tracking-widest uppercase"
+                className="px-5 pt-5 pb-1.5 text-xs font-semibold tracking-wide"
                 style={{
                   color: "#627083",
                 }}
@@ -562,7 +565,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
 
               {navItem.id === "incidents" && (
                 <span
-                  className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                  className="ml-auto text-xs font-semibold px-1.5 py-0.5 rounded"
                   style={{
                     background: "rgba(255,77,94,0.12)",
 
@@ -626,7 +629,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
           ].map((s) => (
             <div key={s.label} className="flex items-center justify-between">
               <span
-                className="font-mono text-[11px]"
+                className="font-mono text-xs"
                 style={{
                   color: "#627083",
                 }}
@@ -643,7 +646,7 @@ function Sidebar({ current, onNavigate }: SidebarProps) {
                 />
 
                 <span
-                  className="text-[10px] font-medium"
+                  className="text-xs font-medium"
                   style={{
                     color: s.color,
                   }}
@@ -830,7 +833,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
           }}
         >
           <span style={{ fontSize: "8px" }}>◆</span>
-          TRAINING ENV
+          Training Env
         </div>
 
         {/* Live */}
@@ -872,7 +875,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
             </svg>
 
             <span
-              className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center"
+              className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-xs font-bold flex items-center justify-center"
               style={{
                 background: "#FF4D5E",
 
@@ -951,7 +954,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
                     </p>
 
                     <p
-                      className="text-[11px] mt-0.5 truncate"
+                      className="text-xs mt-0.5 truncate"
                       style={{
                         color: "#9AA8B8",
                       }}
@@ -961,7 +964,7 @@ function TopBar({ title, onNavigate }: TopBarProps) {
                   </div>
 
                   <span
-                    className="text-[10px] flex-shrink-0 mt-0.5"
+                    className="text-xs flex-shrink-0 mt-0.5"
                     style={{
                       color: "#627083",
                     }}
@@ -1122,9 +1125,11 @@ function MobileNav({
 
   return (
     <nav
-      className="flex items-center justify-around px-2 flex-shrink-0"
+      className="flex items-center justify-around px-1 sm:px-2 flex-shrink-0"
       style={{
         height: "60px",
+
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
 
         background: "#0D131D",
 
@@ -1142,7 +1147,7 @@ function MobileNav({
             aria-current={isActive ? "page" : undefined}
             aria-label={item.label}
             type="button"
-            className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
+            className="flex flex-col items-center justify-center gap-0.5 min-h-[44px] px-2 py-1.5 rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#56B4FF]/50"
             style={{
               color: isActive ? "#56B4FF" : "#627083",
 
@@ -1151,7 +1156,7 @@ function MobileNav({
           >
             {icons[item.id]}
 
-            <span className="text-[9px] font-medium tracking-wide">
+            <span className="text-xs font-medium tracking-wide">
               {item.label}
             </span>
           </button>
@@ -1269,14 +1274,14 @@ export default function App() {
                 SENTINEL
               </span>
 
-              <span className="text-[10px] font-mono text-[#627083] hidden min-[360px]:inline truncate">
+              <span className="text-xs font-mono text-[#627083] hidden min-[360px]:inline truncate">
                 SOC v2.2
               </span>
             </div>
 
             <div className="flex items-center gap-2">
               <div
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold"
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold"
                 style={{
                   background: "rgba(244,201,93,0.04)",
 
@@ -1285,7 +1290,7 @@ export default function App() {
                   border: "1px solid rgba(244,201,93,0.15)",
                 }}
               >
-                ◆ TRAINING
+                ◆ Training
               </div>
 
               <LiveIndicator />
@@ -1297,9 +1302,13 @@ export default function App() {
 
         <main
           key={screen}
-          className="flex-1 overflow-y-auto screen-enter"
+          className="flex-1 min-w-0 overflow-y-auto overflow-x-clip screen-enter"
           style={{
             padding: isMobile ? "16px" : "32px",
+
+            paddingBottom: isMobile
+              ? "calc(16px + env(safe-area-inset-bottom, 0px))"
+              : undefined,
 
             background: "#070B12",
           }}

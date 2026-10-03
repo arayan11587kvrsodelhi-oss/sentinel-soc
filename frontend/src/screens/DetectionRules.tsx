@@ -227,7 +227,10 @@ export default function DetectionRules() {
           </p>
         </div>
         <button
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
+          type="button"
+          disabled
+          title="Rule authoring is not available in this build"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-not-allowed opacity-60"
           style={{
             background: "#56B4FF15",
             color: "#56B4FF",
@@ -238,9 +241,9 @@ export default function DetectionRules() {
         </button>
       </div>
 
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Rules List */}
-        <div className="col-span-2 space-y-2">
+        <div className="col-span-1 lg:col-span-2 space-y-2">
           {rules.map((rule) => (
             <div
               key={rule.id}
@@ -267,7 +270,7 @@ export default function DetectionRules() {
                   </span>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span
-                      className="text-[10px] px-1.5 py-0 rounded"
+                      className="text-xs px-1.5 py-0 rounded"
                       style={{
                         background: sevColor[rule.severity] + "15",
 
@@ -276,7 +279,7 @@ export default function DetectionRules() {
                     >
                       {rule.severity}
                     </span>
-                    <span className="text-[10px]" style={{ color: "#627083" }}>
+                    <span className="text-xs" style={{ color: "#627083" }}>
                       {rule.category}
                     </span>
                   </div>
@@ -325,7 +328,7 @@ export default function DetectionRules() {
                   >
                     {rule.matches}
                   </div>
-                  <div className="text-[10px]" style={{ color: "#627083" }}>
+                  <div className="text-xs" style={{ color: "#627083" }}>
                     matches
                   </div>
                 </div>
@@ -337,14 +340,14 @@ export default function DetectionRules() {
                   >
                     {rule.incidents}
                   </div>
-                  <div className="text-[10px]" style={{ color: "#627083" }}>
+                  <div className="text-xs" style={{ color: "#627083" }}>
                     incidents
                   </div>
                 </div>
                 <div className="w-px h-6" style={{ background: "#1D2938" }} />
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-0.5">
-                    <div className="text-[10px]" style={{ color: "#627083" }}>
+                    <div className="text-xs" style={{ color: "#627083" }}>
                       precision
                     </div>
                     <div
@@ -388,7 +391,7 @@ export default function DetectionRules() {
         </div>
 
         {/* Rule Detail */}
-        <div className="col-span-3 space-y-4">
+        <div className="col-span-1 lg:col-span-3 space-y-4">
           <div
             className="rounded-xl p-5"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
@@ -403,7 +406,7 @@ export default function DetectionRules() {
                     {selectedRule.id}
                   </span>
                   <span
-                    className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                    className="text-xs px-1.5 py-0.5 rounded font-medium"
                     style={{
                       background: enabledStates[selectedRule.id]
                         ? "#42D39215"
@@ -427,7 +430,7 @@ export default function DetectionRules() {
 
             {/* Stats row */}
             <div
-              className="flex gap-6 mb-5 pb-4"
+              className="flex flex-wrap gap-x-6 gap-y-3 mb-5 pb-4"
               style={{ borderBottom: "1px solid #1D2938" }}
             >
               {[
@@ -466,7 +469,7 @@ export default function DetectionRules() {
               ].map((s) => (
                 <div key={s.label}>
                   <div
-                    className="text-[10px] font-semibold uppercase tracking-wider mb-1"
+                    className="text-xs font-semibold tracking-wider mb-1"
                     style={{ color: "#627083" }}
                   >
                     {s.label}
@@ -488,10 +491,10 @@ export default function DetectionRules() {
             {/* Rule Logic */}
             <div>
               <span
-                className="text-[10px] font-semibold uppercase tracking-widest block mb-3"
+                className="text-xs font-semibold tracking-wide block mb-3"
                 style={{ color: "#627083" }}
               >
-                RULE LOGIC
+                Rule Logic
               </span>
               <div className="space-y-2">
                 {selectedRule.conditions.map((cond, i) => (
@@ -591,10 +594,10 @@ export default function DetectionRules() {
           >
             <div className="flex items-center justify-between mb-3">
               <span
-                className="text-xs font-semibold tracking-widest uppercase"
+                className="text-xs font-semibold tracking-wide"
                 style={{ color: "#627083" }}
               >
-                PRECISION TREND
+                Precision Trend
               </span>
               <span
                 className="text-xs font-semibold"

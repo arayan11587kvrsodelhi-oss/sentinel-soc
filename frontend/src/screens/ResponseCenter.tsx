@@ -4,6 +4,7 @@ import {
   simulateResponseAction,
   getResponseAuditLog,
 } from "../lib/sentinel-api"
+import { SOCIcon } from "../components/ui"
 
 interface ActionDef {
   id: string
@@ -150,15 +151,15 @@ export default function ResponseCenter() {
           className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ background: "#F4C95D20" }}
         >
-          <span className="text-xl">⚠</span>
+          <SOCIcon name="warning" className="w-5 h-5 text-[#F4C95D]" />
         </div>
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="font-semibold" style={{ color: "#F4C95D" }}>
-              SIMULATION ENVIRONMENT
+              Simulation Environment
             </span>
             <span
-              className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+              className="text-xs px-1.5 py-0.5 rounded font-semibold"
               style={{ background: "#F4C95D20", color: "#F4C95D" }}
             >
               ◆ SIMULATED
@@ -186,20 +187,20 @@ export default function ResponseCenter() {
           }}
         >
           <p className="text-sm font-medium">Action failed</p>
-          <p className="text-xs mt-1" style={{ color: "#FF8A8F" }}>
+          <p className="text-xs mt-1" style={{ color: "#FF4D5E" }}>
             {error}
           </p>
         </div>
       )}
 
-      <div className="grid grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Actions */}
-        <div className="col-span-3 space-y-3">
+        <div className="col-span-1 lg:col-span-3 space-y-3">
           <span
-            className="text-xs font-semibold tracking-widest uppercase"
+            className="text-xs font-semibold tracking-wide"
             style={{ color: "#627083" }}
           >
-            AVAILABLE RESPONSE ACTIONS
+            Available Response Actions
           </span>
           {actions.map((action) => {
             const isRunning = simulating === action.id
@@ -211,7 +212,7 @@ export default function ResponseCenter() {
                 className="rounded-xl p-4"
                 style={{ background: "#111925", border: "1px solid #1D2938" }}
               >
-                <div className="flex items-start gap-4">
+                <div className="flex flex-wrap items-start gap-4">
                   <div
                     className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-lg"
                     style={{
@@ -232,7 +233,7 @@ export default function ResponseCenter() {
                       </span>
                       {hasDone && !isRunning && (
                         <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          className="text-xs px-1.5 py-0.5 rounded font-medium"
                           style={{ background: "#42D39215", color: "#42D392" }}
                         >
                           ✓ SIMULATED
@@ -245,15 +246,15 @@ export default function ResponseCenter() {
                     <p className="text-xs mb-2" style={{ color: "#627083" }}>
                       {action.detail}
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className="text-[10px]"
+                        className="text-xs"
                         style={{ color: "#627083" }}
                       >
                         Target:
                       </span>
                       <span
-                        className="font-mono text-[11px] font-medium"
+                        className="font-mono text-xs font-medium"
                         style={{ color: "#9AA8B8" }}
                       >
                         {action.target}
@@ -264,7 +265,7 @@ export default function ResponseCenter() {
                   <button
                     onClick={() => runSimulation(action.id, action.target)}
                     disabled={isRunning || simulating !== null}
-                    className="flex-shrink-0 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                    className="shrink-0 max-w-full px-4 py-2 rounded-lg text-xs font-semibold transition-all break-words text-center"
                     style={{
                       background: isRunning
                         ? action.color + "20"
@@ -315,16 +316,16 @@ export default function ResponseCenter() {
         </div>
 
         {/* Results panel */}
-        <div className="col-span-2 space-y-4">
+        <div className="col-span-1 lg:col-span-2 space-y-4">
           <div
             className="rounded-xl p-4 sticky top-0"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-3"
+              className="text-xs font-semibold tracking-wide block mb-3"
               style={{ color: "#627083" }}
             >
-              SIMULATION LOG
+              Simulation Log
             </span>
 
             {isLoading ? (
@@ -341,7 +342,7 @@ export default function ResponseCenter() {
                 className="rounded-lg p-6 text-center"
                 style={{ background: "#0D131D", border: "1px solid #1D2938" }}
               >
-                <div className="text-2xl mb-2" style={{ color: "#1D2938" }}>
+                <div className="text-2xl mb-2" style={{ color: "#394B5E" }}>
                   ◌
                 </div>
                 <p className="text-xs" style={{ color: "#627083" }}>
@@ -394,7 +395,7 @@ export default function ResponseCenter() {
                       <div className="flex items-center justify-between">
                         <span style={{ color: "#627083" }}>Time</span>
                         <span
-                          className="font-mono text-[10px]"
+                          className="font-mono text-xs"
                           style={{ color: "#627083" }}
                         >
                           {new Date(res.timestamp).toLocaleTimeString([], {

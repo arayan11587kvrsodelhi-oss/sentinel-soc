@@ -110,8 +110,11 @@ export function ProvenanceBadge({
   return (
     <div ref={ref} className="relative inline-block">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded transition-all select-none"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 text-xs font-semibold leading-4 px-2 py-1 rounded-md cursor-pointer transition-all select-none hover:brightness-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#56B4FF]"
         style={{
           color: cfg.color,
 
@@ -120,7 +123,9 @@ export function ProvenanceBadge({
           border: `1px solid ${cfg.color}25`,
         }}
       >
-        <span style={{ fontSize: "7px" }}>{cfg.icon}</span>
+        <span aria-hidden="true" className="leading-none">
+          {cfg.icon}
+        </span>
         {cfg.label}
       </button>
 
@@ -142,17 +147,18 @@ export function ProvenanceBadge({
               className="text-xs font-semibold"
               style={{ color: "#F4F7FA" }}
             >
-              DATA PROVENANCE
+              Data provenance
             </span>
             <button
+              type="button"
               onClick={() => setOpen(false)}
-              className="text-[10px]"
-              style={{ color: "#627083" }}
+              aria-label="Close provenance details"
+              className="text-xs leading-none px-1 py-0.5 rounded-lg cursor-pointer transition-colors text-[#627083] hover:text-[#F4F7FA]"
             >
               ✕
             </button>
           </div>
-          <div className="space-y-1.5 text-[11px]">
+          <div className="space-y-1.5 text-xs">
             <div>
               <div style={{ color: "#627083" }}>Classification</div>
               <div

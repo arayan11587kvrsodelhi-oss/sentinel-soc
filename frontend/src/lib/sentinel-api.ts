@@ -10,6 +10,41 @@ export const SENTINEL_WS =
     ? "ws://localhost:8000/ws/events"
     : "wss://sentinel-soc-api-qpzg.onrender.com/ws/events")
 
+/**
+ * Structured, user-safe error category returned by the Sentinel AI endpoints.
+ * The backend reduces every inference failure to one of these before it leaves
+ * the process, so no raw provider/gateway payload ever reaches the browser.
+ */
+export type AIErrorCategory =
+  | "AI_RATE_LIMITED"
+  | "AI_PROVIDER_UNAVAILABLE"
+  | "AI_AUTHENTICATION_FAILED"
+  | "AI_REQUEST_FAILED"
+  | "AI_TIMEOUT"
+  | "AI_CANCELLED"
+
+/** Error thrown for non-2xx responses that carry a structured AI category. */
+export class SentinelAPIError extends Error {
+  readonly status: number
+  readonly category?: AIErrorCategory
+
+  constructor(message: string, status: number, category?: AIErrorCategory) {
+    super(message)
+    this.name = "SentinelAPIError"
+    this.status = status
+    this.category = category
+  }
+}
+
+const AI_CATEGORIES = new Set<string>([
+  "AI_RATE_LIMITED",
+  "AI_PROVIDER_UNAVAILABLE",
+  "AI_AUTHENTICATION_FAILED",
+  "AI_REQUEST_FAILED",
+  "AI_TIMEOUT",
+  "AI_CANCELLED",
+])
+
 export async function sentinelFetch<T>(
   path: string,
   init?: RequestInit,
@@ -32,6 +67,33 @@ export async function sentinelFetch<T>(
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "")
+
+      // The AI endpoints return a sanitized, structured error. When one is
+      // present we surface ONLY the safe message — the raw provider/gateway
+      // body is deliberately never appended. Endpoints without a structured
+      // category keep the existing behaviour untouched.
+      try {
+        const parsedBody = errorText ? JSON.parse(errorText) : null
+        const detail = parsedBody?.detail
+        if (
+          detail &&
+          typeof detail === "object" &&
+          typeof detail.category === "string" &&
+          AI_CATEGORIES.has(detail.category)
+        ) {
+          throw new SentinelAPIError(
+            typeof detail.message === "string"
+              ? detail.message
+              : "AI analysis could not be completed. Please try again.",
+            response.status,
+            detail.category as AIErrorCategory,
+          )
+        }
+      } catch (err) {
+        // Re-throw the structured error we just built; ignore JSON parse noise.
+        if (err instanceof SentinelAPIError) throw err
+      }
+
       throw new Error(
         `Sentinel API ${response.status}: ${response.statusText}${
           errorText ? ` - ${errorText}` : ""
@@ -116,6 +178,17 @@ export interface AIAnalysisResponse {
   model?: string
   source?: string
   generated_at?: string
+  /**
+   * Reliability contract added for the AI inference path:
+   *  - `ai_status: "degraded"` means the upstream model did not answer and the
+   *    response came from Sentinel's deterministic engine (never a fabricated
+   *    model reply). `ai_message` is the user-safe reason.
+   */
+  ai_status?: "ok" | "degraded"
+  llm_used?: boolean
+  ai_mode?: string
+  ai_error_category?: AIErrorCategory
+  ai_message?: string
 }
 
 export interface Incident {
@@ -711,16 +784,38 @@ export type WsConnectionState =
   | "STALE"
   | "OFFLINE"
 
-type WsListener = (data: unknown) => void
+/**
+ * Shape of a message pushed over the Sentinel WebSocket. Every field is
+ * optional because the gateway emits several envelope kinds on the same
+ * socket; consumers narrow on `type` / `event_msg_type` before reading
+ * the payload. The wire contract is unchanged — this only describes it
+ * so subscribers no longer receive `unknown`.
+ */
+export interface WsMessage {
+  /** Envelope discriminant: "INITIAL_STATE" | "INCIDENT_UPDATE" | ... */
+  type?: string
+  /** Distinguishes a raw security event from an incident envelope. */
+  event_msg_type?: string
+  /** Id of the event on a security-event envelope. */
+  event_id?: string
+  /** Full snapshot of open incidents sent on connect. */
+  active_incidents?: Incident[]
+  /** Recent telemetry sent on connect. */
+  recent_events?: SecurityEvent[]
+  /** Incremental incident update payload. */
+  incident?: Incident
+}
+
+type WsListener = (data: WsMessage) => void
 type StateListener = (state: WsConnectionState) => void
 
 class SentinelWsManager {
   private ws: WebSocket | null = null
   private listeners: Set<WsListener> = new Set()
   private stateListeners: Set<StateListener> = new Set()
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private pingTimer: ReturnType<typeof setInterval> | null = null
-  private staleTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined
+  private pingTimer: ReturnType<typeof setInterval> | undefined = undefined
+  private staleTimer: ReturnType<typeof setTimeout> | undefined = undefined
   private isConnecting: boolean = false
   private shouldConnect: boolean = true
   private reconnectAttempt: number = 0

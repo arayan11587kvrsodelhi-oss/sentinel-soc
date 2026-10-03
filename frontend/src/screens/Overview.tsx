@@ -12,6 +12,12 @@ import {
   wsManager,
 } from "../lib/sentinel-api"
 import IncidentDrawer from "../components/IncidentDrawer"
+import { SOCIcon } from "../components/ui"
+import {
+  formatEventType,
+  formatHealthStatus,
+  isHealthyStatus,
+} from "../lib/design-tokens"
 
 // ─── Data ─────────────────────────────────────────────────
 
@@ -21,6 +27,19 @@ const sparkData = {
   threats: [0, 1, 1, 2, 1, 2, 2, 1, 2],
   events: [90, 95, 88, 102, 108, 115, 112, 120, 128],
 }
+
+/**
+ * Primary navigation shortcuts, rendered directly beneath the dashboard
+ * header so the fastest paths into the console are visible first.
+ */
+const quickActions = [
+  { label: "View Incidents", screen: "incidents", icon: "incidents" },
+  { label: "Live Events", screen: "live-events", icon: "live-events" },
+  { label: "Threat Intelligence", screen: "threat-intel", icon: "threat-intel" },
+  { label: "Vulnerabilities", screen: "vulnerabilities", icon: "vulnerabilities" },
+  { label: "AI Analyst", screen: "ai-analyst", icon: "ai-analyst" },
+  { label: "MITRE ATT&CK", screen: "mitre", icon: "mitre" },
+] as const
 
 const eventsData = [
   45, 52, 48, 61, 58, 68, 72, 69, 75, 80, 77, 82, 90, 85, 91, 88, 95, 100, 108,
@@ -88,19 +107,23 @@ function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
 
   const W = 72
   const H = 24
+  // Keep every glyph (crosshair, glow dot r=4.5) inside the viewBox so the
+  // chart can never paint outside its own card.
+  const INSET = 5
+  const PLOT_W = W - INSET * 2
   const vMin = Math.min(...data)
   const vMax = Math.max(...data)
   const range = vMax - vMin || 1
 
   const pts = data
     .map((v, i) => {
-      const x = (i / (data.length - 1)) * W
+      const x = INSET + (i / (data.length - 1)) * PLOT_W
       const y = H - 2 - ((v - vMin) / range) * (H - 5)
       return `${x.toFixed(1)},${y.toFixed(1)}`
     })
     .join(" ")
 
-  const lastX = W
+  const lastX = INSET + PLOT_W
   const lastY = H - 2 - ((data[data.length - 1] - vMin) / range) * (H - 5)
 
   const handlePointer = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -119,20 +142,21 @@ function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
   const activeIdx = hoverIdx !== null ? hoverIdx : null
   const activeVal = activeIdx !== null ? data[activeIdx] : null
   const activeX =
-    activeIdx !== null ? (activeIdx / (data.length - 1)) * W : lastX
+    activeIdx !== null ? INSET + (activeIdx / (data.length - 1)) * PLOT_W : lastX
   const activeY =
     activeIdx !== null
       ? H - 2 - ((data[activeIdx] - vMin) / range) * (H - 5)
       : lastY
 
   return (
-    <div className="relative group/spark" data-cursor="graph">
+    <div className="relative group/spark w-full max-w-[72px] shrink min-w-0" data-cursor="graph">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         width={W}
         height={H}
-        className="cursor-crosshair overflow-visible block touch-none"
+        style={{ width: "100%", height: "auto", aspectRatio: `${W} / ${H}` }}
+        className="cursor-crosshair block touch-none"
         onPointerMove={handlePointer}
         onPointerDown={handlePointer}
         onPointerLeave={handleLeave}
@@ -188,7 +212,7 @@ function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
       {/* Floating Tooltip */}
       {activeIdx !== null && (
         <div
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded text-[10px] font-mono pointer-events-none z-30 whitespace-nowrap shadow-lg flex items-center gap-1.5"
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded text-xs font-mono pointer-events-none z-30 max-w-[min(130px,55vw)] shadow-lg flex items-center justify-center gap-1.5 text-center leading-tight"
           style={{
             background: "#0D131D",
             border: "1px solid #1D2938",
@@ -204,7 +228,7 @@ function Sparkline({ data, color, name, unit = "" }: SparklineProps) {
             {activeVal}
             {unit}
           </span>
-          <span className="text-[9px]" style={{ color: "#627083" }}>
+          <span className="text-xs" style={{ color: "#627083" }}>
             (t-{data.length - 1 - activeIdx})
           </span>
         </div>
@@ -220,14 +244,31 @@ function ActivityChart() {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
-  const VW = 740
+  // The chart is sized from its real container width (capped at the original
+  // 740u desktop width, so desktop rendering is unchanged). Below the cap the
+  // viewBox matches pixels 1:1, which keeps labels legible and lets the plot
+  // fill a phone screen instead of letterboxing into the middle.
+  const [measuredWidth, setMeasuredWidth] = useState(740)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const measure = () => setMeasuredWidth(Math.min(740, Math.max(260, el.clientWidth || 740)))
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const isNarrow = measuredWidth < 460
+
+  const VW = measuredWidth
   const VH = 148
-  const PL = 44 // Y-axis label space
+  const PL = isNarrow ? 30 : 44 // Y-axis label space
   const PR = 12
   const PT = 28 // annotation label space
   const PB = 22 // X-axis label space
-  const CW = VW - PL - PR // 684
-  const CH = VH - PT - PB // 98
+  const CW = VW - PL - PR
+  const CH = VH - PT - PB
   const yMax = 150
 
   const toX = (i: number) => PL + (i / (eventsData.length - 1)) * CW
@@ -254,15 +295,26 @@ function ActivityChart() {
   const incX = toX(23)
 
   const yGrid = [0, 50, 100, 150]
-  const xLabels = [
-    { idx: 0, label: "12:14" },
-    { idx: 5, label: "12:19" },
-    { idx: 10, label: "12:24" },
-    { idx: 15, label: "12:29" },
-    { idx: 20, label: "12:34" },
-    { idx: 25, label: "12:39" },
-    { idx: 29, label: "12:43" },
-  ]
+  // Thin the tick labels out on narrow screens so they cannot collide or run
+  // past the plot edge. The underlying series is untouched.
+  const xLabels = (
+    isNarrow
+      ? [
+          { idx: 0, label: "12:14" },
+          { idx: 10, label: "12:24" },
+          { idx: 20, label: "12:34" },
+          { idx: 29, label: "12:43" },
+        ]
+      : [
+          { idx: 0, label: "12:14" },
+          { idx: 5, label: "12:19" },
+          { idx: 10, label: "12:24" },
+          { idx: 15, label: "12:29" },
+          { idx: 20, label: "12:34" },
+          { idx: 25, label: "12:39" },
+          { idx: 29, label: "12:43" },
+        ]
+  )
 
   const updatePointer = useCallback(
     (clientX: number) => {
@@ -316,7 +368,7 @@ function ActivityChart() {
   return (
     <div
       ref={containerRef}
-      className="relative w-full select-none"
+      className="relative w-full min-w-0 max-w-full select-none"
       data-cursor="graph"
       data-chart="activity-chart"
       style={{ touchAction: "none" }}
@@ -324,7 +376,8 @@ function ActivityChart() {
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VW} ${VH}`}
-        className="w-full cursor-crosshair"
+        preserveAspectRatio="xMidYMid meet"
+        className="w-full max-w-full cursor-crosshair"
         style={{ height: "148px", display: "block" }}
         onPointerMove={handlePointerMove}
         onPointerDown={handlePointerDown}
@@ -414,7 +467,7 @@ function ActivityChart() {
           fontFamily="'JetBrains Mono', monospace"
           fontWeight="600"
         >
-          ⚑ DETECTION
+          ⚑ Detection
         </text>
 
         {/* Incident annotation background flag */}
@@ -445,7 +498,7 @@ function ActivityChart() {
           fontFamily="'JetBrains Mono', monospace"
           fontWeight="600"
         >
-          ◆ INCIDENT
+          ◆ Incident
         </text>
 
         {/* Area fill */}
@@ -594,7 +647,7 @@ function ActivityChart() {
                 {activeTimeStr}
               </span>
               <span
-                className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded"
                 style={{
                   background: "#42D39215",
                   color: "#42D392",
@@ -608,7 +661,7 @@ function ActivityChart() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-4">
                 <span
-                  className="flex items-center gap-1.5 text-[11px]"
+                  className="flex items-center gap-1.5 text-xs"
                   style={{ color: "#9AA8B8" }}
                 >
                   <span
@@ -623,7 +676,7 @@ function ActivityChart() {
                 >
                   {activeEventsVal}{" "}
                   <span
-                    className="text-[10px] font-normal"
+                    className="text-xs font-normal"
                     style={{ color: "#627083" }}
                   >
                     /min
@@ -633,7 +686,7 @@ function ActivityChart() {
 
               <div className="flex items-center justify-between gap-4">
                 <span
-                  className="flex items-center gap-1.5 text-[11px]"
+                  className="flex items-center gap-1.5 text-xs"
                   style={{ color: "#9AA8B8" }}
                 >
                   <span
@@ -648,7 +701,7 @@ function ActivityChart() {
                 >
                   {activeAuthVal}{" "}
                   <span
-                    className="text-[10px] font-normal"
+                    className="text-xs font-normal"
                     style={{ color: "#627083" }}
                   >
                     /min
@@ -659,7 +712,7 @@ function ActivityChart() {
 
             {activeAnnotation && (
               <div
-                className="mt-2 pt-1.5 text-[10px] font-semibold tracking-tight"
+                className="mt-2 pt-1.5 text-xs font-semibold tracking-tight"
                 style={{
                   borderTop: "1px dashed #1D2938",
                   color: activeAnnotation.color,
@@ -861,7 +914,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
     <div className="space-y-5">
       {/* Premium Command Center Header */}
       <section
-        className="rounded-xl p-4 md:p-5 mb-1"
+        className="rounded-xl p-4 md:p-5 mb-1 min-w-0"
         style={{
           background: "linear-gradient(135deg, rgba(124,140,255,0.08), rgba(86,180,255,0.04))",
           border: "1px solid rgba(124,140,255,0.2)",
@@ -876,7 +929,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                 SENTINEL SOC
               </h1>
               <span
-                className="text-[10px] sm:text-xs font-mono px-2 py-0.5 rounded whitespace-nowrap"
+                className="text-xs font-mono px-2 py-0.5 rounded whitespace-nowrap"
                 style={{
                   background: "#7C8CFF20",
                   color: "#7C8CFF",
@@ -921,7 +974,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
               </div>
 
               <span
-                className="text-[10px] sm:text-xs font-mono px-2 py-1 rounded whitespace-nowrap"
+                className="text-xs font-mono px-2 py-1 rounded whitespace-nowrap"
                 style={{ background: "#1D2938", color: "#627083" }}
                 aria-live="polite"
                 aria-label={`Last updated ${getRelativeTime(lastUpdate)}`}
@@ -939,35 +992,27 @@ export default function Overview({ onNavigate }: OverviewProps) {
               {Object.entries(systemHealth).map(([name, status]) => (
                 <div
                   key={name}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] sm:text-xs whitespace-nowrap"
+                  className="flex items-center gap-1.5 px-2 py-1 rounded text-xs whitespace-nowrap"
                   style={{
                     background: "#070B1280",
-                    border:
-                      status === "OPERATIONAL" ||
-                      status === "HEALTHY" ||
-                      status === "LIVE" ||
-                      status === "RUNNING"
+                    border: isHealthyStatus(status)
                         ? "1px solid #42D39230"
                         : "1px solid #FF4D5E30",
                     color: "#627083",
                   }}
                   role="status"
-                  aria-label={`${name} status: ${status}`}
+                  aria-label={`${name} status: ${formatHealthStatus(status)}`}
                 >
                   <span
                     className="w-1.5 h-1.5 rounded-full"
                     aria-hidden="true"
                     style={{
-                      background:
-                        status === "OPERATIONAL" ||
-                        status === "HEALTHY" ||
-                        status === "LIVE" ||
-                        status === "RUNNING"
-                          ? "#42D392"
-                          : "#FF4D5E",
+                      background: isHealthyStatus(status)
+                        ? "#42D392"
+                        : "#FF4D5E",
                     }}
                   />
-                  <span className="capitalize text-[10px]">{name}</span>
+                  <span className="capitalize text-xs">{name}</span>
                 </div>
               ))}
             </div>
@@ -975,11 +1020,61 @@ export default function Overview({ onNavigate }: OverviewProps) {
         </div>
       </section>
 
+      {/* QUICK ACTIONS — first stop after the command-center header */}
+      <section
+        className="rounded-xl p-4 md:p-5 min-w-0"
+        style={{ background: "#111925", border: "1px solid #1D2938" }}
+        aria-label="Quick actions"
+      >
+        <div className="mb-4">
+          <h2
+            className="text-xs sm:text-sm font-semibold tracking-wide"
+            style={{ color: "#627083" }}
+          >
+            Quick actions
+          </h2>
+          <p className="text-xs mt-1" style={{ color: "#394B5E" }}>
+            Navigate to key SOC operations
+          </p>
+        </div>
+
+        <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          {quickActions.map((action) => (
+            <button
+              key={action.screen}
+              type="button"
+              onClick={() => onNavigate(action.screen)}
+              className="flex items-center gap-2 p-3 rounded-lg text-left transition-all"
+              style={{ background: "#0D131D", border: "1px solid #1D2938" }}
+              onMouseEnter={(e) => {
+                ;(e.currentTarget as HTMLElement).style.borderColor = "#2D3F55"
+                ;(e.currentTarget as HTMLElement).style.background = "#131C2A"
+              }}
+              onMouseLeave={(e) => {
+                ;(e.currentTarget as HTMLElement).style.borderColor = "#1D2938"
+                ;(e.currentTarget as HTMLElement).style.background = "#0D131D"
+              }}
+            >
+              <SOCIcon
+                name={action.icon}
+                className="w-4 h-4 flex-shrink-0 text-[#7C8CFF]"
+              />
+              <span
+                className="text-xs font-medium truncate"
+                style={{ color: "#E8EEF7" }}
+              >
+                {action.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* Metric Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         {[
           {
-            label: "SECURITY SCORE",
+            label: "Security Score",
             value: "87",
             unit: "/ 100",
             delta: "▲ +4 this week",
@@ -990,7 +1085,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
             name: "Security Score",
           },
           {
-            label: "ACTIVE INCIDENTS",
+            label: "Active Incidents",
             value: String(activeIncidents.length).padStart(2, "0"),
             unit: "",
             delta: `${criticalIncidentsCount} Critical priority`,
@@ -1001,7 +1096,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
             name: "Active Incidents",
           },
           {
-            label: "CRITICAL THREATS",
+            label: "Critical Threats",
             value: String(dashboardData.critical_events || 2).padStart(2, "0"),
             unit: "",
             delta: "Correlated telemetry",
@@ -1012,7 +1107,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
             name: "Critical Threats",
           },
           {
-            label: "CISA KEV CATALOG",
+            label: "CISA KEV Catalog",
             value: (dashboardData.kev_catalog_total || 1687).toLocaleString(),
             unit: "",
             delta: "● Actively Exploited",
@@ -1025,24 +1120,26 @@ export default function Overview({ onNavigate }: OverviewProps) {
         ].map((card) => (
           <div
             key={card.label}
-            className="rounded-xl p-4 transition-all"
+            className="rounded-xl p-3 sm:p-4 transition-all min-w-0"
             data-cursor="card"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
-            <div className="flex items-start justify-between mb-2">
+            <div className="flex items-start justify-between gap-2 mb-2">
               <span
-                className="text-[10px] font-semibold tracking-widest uppercase"
+                className="min-w-0 text-xs font-semibold leading-tight break-words"
                 style={{ color: "#627083" }}
               >
                 {card.label}
               </span>
-              <ProvenanceBadge type={card.prov} />
+              <div className="shrink-0">
+                <ProvenanceBadge type={card.prov} />
+              </div>
             </div>
-            <div className="flex items-end justify-between gap-3">
-              <div>
+            <div className="flex items-end justify-between gap-2 sm:gap-3">
+              <div className="min-w-0">
                 <div className="flex items-baseline gap-1">
                   <span
-                    className="text-[2rem] font-semibold tabular-nums leading-none font-mono"
+                    className="text-2xl sm:text-3xl font-semibold tabular-nums leading-none font-mono break-words"
                     style={{ color: card.color }}
                   >
                     {card.value}
@@ -1054,13 +1151,13 @@ export default function Overview({ onNavigate }: OverviewProps) {
                   )}
                 </div>
                 <p
-                  className="mt-1.5 text-[11px]"
+                  className="mt-1.5 text-xs break-words"
                   style={{ color: card.deltaColor }}
                 >
                   {card.delta}
                 </p>
               </div>
-              <div className="flex-shrink-0">
+              <div className="flex-shrink-0 hidden min-[400px]:block">
                 <Sparkline
                   data={card.spark}
                   color={card.color}
@@ -1084,12 +1181,13 @@ export default function Overview({ onNavigate }: OverviewProps) {
           className="flex items-center justify-between mb-3 pb-2.5"
           style={{ borderBottom: "1px solid #1D2938" }}
         >
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-[#7C8CFF] flex items-center gap-1.5">
-              <span>🛡</span> SOC THREAT & INCIDENT INTELLIGENCE
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs sm:text-sm font-bold text-[#7C8CFF] flex items-center gap-1.5">
+              <SOCIcon name="threat-intel" className="w-4 h-4" />
+              SOC Threat & Incident Intelligence
             </span>
-            <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-[#7C8CFF15] text-[#7C8CFF] font-semibold">
-              DAY 3 CAPABILITY UPGRADE
+            <span className="text-xs font-mono px-2 py-1 rounded-md bg-[#7C8CFF15] text-[#7C8CFF] font-semibold">
+              Day 3 capability upgrade
             </span>
           </div>
 
@@ -1103,61 +1201,61 @@ export default function Overview({ onNavigate }: OverviewProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
-            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+            <span className="text-xs text-[#627083] font-semibold block">
               Active Incidents
             </span>
             <div className="text-xl font-bold font-mono text-[#F4F7FA] mt-0.5">
               {activeIncidents.length}
             </div>
-            <span className="text-[10px] text-[#42D392]">
+            <span className="text-xs text-[#42D392]">
               Correlated & Live
             </span>
           </div>
 
           <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
-            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+            <span className="text-xs text-[#627083] font-semibold block">
               Critical Incidents
             </span>
             <div className="text-xl font-bold font-mono text-[#FF4D5E] mt-0.5">
               {criticalIncidentsCount}
             </div>
-            <span className="text-[10px] text-[#FF4D5E]">
+            <span className="text-xs text-[#FF4D5E]">
               Requires containment
             </span>
           </div>
 
           <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
-            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+            <span className="text-xs text-[#627083] font-semibold block">
               CISA KEV Catalog
             </span>
             <div className="text-xl font-bold font-mono text-[#FF8A4C] mt-0.5">
               {(dashboardData.kev_catalog_total || 1687).toLocaleString()}
             </div>
-            <span className="text-[10px] text-[#FF8A4C]">Known Exploited</span>
+            <span className="text-xs text-[#FF8A4C]">Known Exploited</span>
           </div>
 
           <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
-            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+            <span className="text-xs text-[#627083] font-semibold block">
               NVD Critical CVEs
             </span>
             <div className="text-xl font-bold font-mono text-[#F4C95D] mt-0.5">
               {dashboardData.nvd_records_total || 40}
             </div>
-            <span className="text-[10px] text-[#9AA8B8]">
+            <span className="text-xs text-[#9AA8B8]">
               CVSS v3.1 Enriched
             </span>
           </div>
 
           <div className="p-3 rounded-lg bg-[#070B12] border border-[#1D2938]">
-            <span className="text-[10px] uppercase text-[#627083] font-semibold block">
+            <span className="text-xs text-[#627083] font-semibold block">
               Threat Activity
             </span>
             <div className="text-xl font-bold font-mono text-[#56B4FF] mt-0.5">
               {recentThreats.length > 0 ? recentThreats.length : 12}
             </div>
-            <span className="text-[10px] text-[#56B4FF]">Events in window</span>
+            <span className="text-xs text-[#56B4FF]">Events in window</span>
           </div>
         </div>
       </div>
@@ -1168,22 +1266,22 @@ export default function Overview({ onNavigate }: OverviewProps) {
         data-cursor="card"
         style={{ background: "#111925", border: "1px solid #1D2938" }}
       >
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-4">
           <div>
             <span
-              className="text-xs font-semibold tracking-widest uppercase"
+              className="text-xs sm:text-sm font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              LIVE SECURITY ACTIVITY
+              Live security activity
             </span>
-            <p className="text-[11px] mt-0.5" style={{ color: "#394B5E" }}>
+            <p className="text-xs mt-0.5" style={{ color: "#394B5E" }}>
               Events per minute over the last 30 minutes — interactive
               inspection with hover & touch crosshair
             </p>
           </div>
-          <div className="flex items-center gap-4 flex-shrink-0">
+          <div className="flex min-w-0 items-center gap-x-4 gap-y-2 flex-wrap">
             <div
-              className="flex items-center gap-3 text-[11px]"
+              className="flex items-center gap-3 text-xs flex-wrap"
               style={{ color: "#627083" }}
             >
               <span className="flex items-center gap-1.5">
@@ -1221,20 +1319,20 @@ export default function Overview({ onNavigate }: OverviewProps) {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
         {/* Threat Distribution */}
         <div
-          className="col-span-2 rounded-xl p-4 relative"
+          className="col-span-1 md:col-span-2 rounded-xl p-4 relative"
           data-cursor="card"
           style={{ background: "#111925", border: "1px solid #1D2938" }}
         >
           <div className="flex items-center justify-between mb-4">
             <span
-              className="text-xs font-semibold tracking-widest uppercase"
+              className="text-xs sm:text-sm font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              THREAT DISTRIBUTION
+              Threat distribution
             </span>
             <ProvenanceBadge type="derived" />
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 px-1.5">
             {threatData.map((item) => {
               const isHovered = hoveredThreat === item.level
               return (
@@ -1265,7 +1363,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span
-                        className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded transition-all"
+                        className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded transition-all"
                         style={{
                           background: item.color + (isHovered ? "30" : "18"),
                           color: item.color,
@@ -1297,7 +1395,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
 
                   {isHovered && (
                     <p
-                      className="text-[10px] mt-1.5 transition-opacity"
+                      className="text-xs mt-1.5 transition-opacity"
                       style={{ color: "#627083" }}
                     >
                       {item.desc}
@@ -1316,7 +1414,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                 <span className="text-xs font-semibold font-mono text-[#9AA8B8]">
                   {dashboardData.total_events_streamed || 55} events
                 </span>
-                <span className="text-[9px] font-mono text-[#7C8CFF]">
+                <span className="text-xs font-mono text-[#7C8CFF]">
                   ◇ DERIVED
                 </span>
               </div>
@@ -1326,16 +1424,16 @@ export default function Overview({ onNavigate }: OverviewProps) {
 
         {/* Active Incidents List */}
         <div
-          className="col-span-3 rounded-xl p-4"
+          className="col-span-1 md:col-span-3 rounded-xl p-4"
           data-cursor="card"
           style={{ background: "#111925", border: "1px solid #1D2938" }}
         >
           <div className="flex items-center justify-between mb-4">
             <span
-              className="text-xs font-semibold tracking-widest uppercase"
+              className="text-xs sm:text-sm font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              ACTIVE INCIDENTS
+              Active incidents
             </span>
             <button
               onClick={() => onNavigate("incidents")}
@@ -1351,7 +1449,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
               <div
                 key={inc.incident_id}
                 onClick={() => handleOpenIncident(inc)}
-                className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all"
+                className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg cursor-pointer transition-all"
                 style={{ background: "#0D131D", border: "1px solid #1D2938" }}
                 onMouseEnter={(e) => {
                   ;(e.currentTarget as HTMLElement).style.borderColor =
@@ -1364,7 +1462,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                   ;(e.currentTarget as HTMLElement).style.background = "#0D131D"
                 }}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div
                     className="w-2 h-2 rounded-full flex-shrink-0"
                     style={{ background: sevColor[inc.severity] || "#56B4FF" }}
@@ -1378,7 +1476,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                         {inc.title}
                       </span>
                       <span
-                        className="text-[10px] font-mono px-1 py-0.2 rounded font-semibold"
+                        className="text-xs font-mono px-1 py-1 rounded font-semibold"
                         style={{
                           background:
                             (sevColor[inc.severity] || "#56B4FF") + "20",
@@ -1389,19 +1487,19 @@ export default function Overview({ onNavigate }: OverviewProps) {
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-mono text-[#627083]">
+                      <span className="text-xs font-mono text-[#627083]">
                         {inc.incident_id}
                       </span>
                       <span style={{ color: "#1D2938" }}>·</span>
-                      <span className="text-[10px] font-mono text-[#7C8CFF]">
+                      <span className="text-xs font-mono text-[#7C8CFF]">
                         {inc.category}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-mono text-[#627083]">
+                <div className="flex items-center gap-3 min-w-0 flex-wrap">
+                  <span className="text-xs font-mono text-[#627083] shrink-0">
                     {new Date(inc.updated_at || Date.now()).toLocaleTimeString(
                       [],
                       {
@@ -1411,7 +1509,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                     )}
                   </span>
                   <span
-                    className="text-[10px] font-mono px-2 py-0.5 rounded font-medium"
+                    className="text-xs font-mono px-2 py-0.5 rounded font-medium"
                     style={{
                       background:
                         inc.status === "INVESTIGATING"
@@ -1439,25 +1537,26 @@ export default function Overview({ onNavigate }: OverviewProps) {
       {/* PREMIUM LIVE EVENT STREAM */}
       {/* ═════════════════════════════════════════════════════════ */}
       <section
-        className="rounded-xl p-4 md:p-5"
+        className="rounded-xl p-4 md:p-5 min-w-0"
         style={{ background: "#111925", border: "1px solid #1D2938" }}
         aria-label="Live event stream"
       >
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
           <div className="flex-1">
             <h2
-              className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              ⚡ LIVE EVENT STREAM
+              <SOCIcon name="live-events" className="w-4 h-4" />
+              Live event stream
             </h2>
-            <p className="text-[10px] sm:text-[11px] mt-1" style={{ color: "#394B5E" }}>
+            <p className="text-xs mt-1" style={{ color: "#394B5E" }}>
               Real-time security events and alerts sorted by recency
             </p>
           </div>
           <button
             onClick={() => onNavigate("live-events")}
-            className="text-[10px] sm:text-xs font-semibold px-3 py-1.5 rounded hover:opacity-80 transition-opacity whitespace-nowrap focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity whitespace-nowrap focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             style={{
               background: "#56B4FF20",
               color: "#56B4FF",
@@ -1497,7 +1596,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span
-                        className="text-[10px] sm:text-xs font-mono font-semibold px-2 py-0.5 rounded"
+                        className="text-xs font-mono font-semibold px-2 py-0.5 rounded"
                         style={{
                           background: color + "20",
                           color: color,
@@ -1506,7 +1605,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                         {event.severity}
                       </span>
                       <span
-                        className="text-[9px] sm:text-[10px]"
+                        className="text-xs"
                         style={{ color: "#627083" }}
                       >
                         {new Date(event.timestamp).toLocaleTimeString()}
@@ -1516,10 +1615,10 @@ export default function Overview({ onNavigate }: OverviewProps) {
                       className="text-xs sm:text-sm truncate"
                       style={{ color: "#E8EEF7" }}
                     >
-                      {event.event_type}
+                      {formatEventType(event.event_type)}
                     </p>
                     <p
-                      className="text-[11px] mt-0.5 truncate"
+                      className="text-xs mt-0.5 truncate"
                       style={{ color: "#9AA8B8" }}
                     >
                       {event.message || event.target}
@@ -1543,20 +1642,21 @@ export default function Overview({ onNavigate }: OverviewProps) {
       {/* ATTACK ACTIVITY TIMELINE */}
       {/* ═════════════════════════════════════════════════════════ */}
       <div
-        className="grid gap-5 md:grid-cols-2"
+        className="grid gap-5"
       >
         <div
-          className="rounded-xl p-4 md:p-5"
+          className="rounded-xl p-4 md:p-5 min-w-0"
           style={{ background: "#111925", border: "1px solid #1D2938" }}
         >
           <div className="mb-4">
             <span
-              className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              📊 ATTACK ACTIVITY TIMELINE
+              <SOCIcon name="clock" className="w-4 h-4" />
+              Attack activity timeline
             </span>
-            <p className="text-[10px] sm:text-[11px] mt-1" style={{ color: "#394B5E" }}>
+            <p className="text-xs mt-1" style={{ color: "#394B5E" }}>
               Chronological incident progression
             </p>
           </div>
@@ -1587,13 +1687,13 @@ export default function Overview({ onNavigate }: OverviewProps) {
                     </div>
                     <div className="pt-0.5 min-w-0">
                       <p
-                        className="text-[10px] sm:text-xs font-mono font-semibold"
+                        className="text-xs font-mono font-semibold"
                         style={{ color: "#F4F7FA" }}
                       >
                         {event.time}
                       </p>
                       <p
-                        className="text-[10px] sm:text-xs mt-0.5 truncate"
+                        className="text-xs mt-0.5 truncate"
                         style={{ color: "#9AA8B8" }}
                       >
                         {event.title}
@@ -1612,68 +1712,6 @@ export default function Overview({ onNavigate }: OverviewProps) {
             )}
           </div>
         </div>
-
-        {/* QUICK ACTIONS */}
-        <div
-          className="rounded-xl p-4 md:p-5"
-          style={{ background: "#111925", border: "1px solid #1D2938" }}
-        >
-          <div className="mb-4">
-            <span
-              className="text-xs font-semibold tracking-widest uppercase"
-              style={{ color: "#627083" }}
-            >
-              ⚙️ QUICK ACTIONS
-            </span>
-            <p className="text-[10px] sm:text-[11px] mt-1" style={{ color: "#394B5E" }}>
-              Navigate to key SOC operations
-            </p>
-          </div>
-
-          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-2">
-            {[
-              { label: "View Incidents", screen: "incidents", icon: "🔴" },
-              { label: "Live Events", screen: "live-events", icon: "⚡" },
-              {
-                label: "Threat Intelligence",
-                screen: "threat-intel",
-                icon: "🛡️",
-              },
-              {
-                label: "Vulnerabilities",
-                screen: "vulnerabilities",
-                icon: "⚠️",
-              },
-              { label: "AI Analyst", screen: "ai-analyst", icon: "🤖" },
-              { label: "MITRE ATT&CK", screen: "mitre", icon: "📊" },
-            ].map((action) => (
-              <button
-                key={action.screen}
-                onClick={() => onNavigate(action.screen)}
-                className="flex items-center gap-2 p-2 sm:p-3 rounded-lg text-left transition-all hover:border-opacity-100"
-                style={{
-                  background: "#0D131D",
-                  border: "1px solid #1D2938",
-                }}
-                onMouseEnter={(e) => {
-                  ;(e.currentTarget as HTMLElement).style.borderColor =
-                    "#2D3F55"
-                  ;(e.currentTarget as HTMLElement).style.background = "#131C2A"
-                }}
-                onMouseLeave={(e) => {
-                  ;(e.currentTarget as HTMLElement).style.borderColor =
-                    "#1D2938"
-                  ;(e.currentTarget as HTMLElement).style.background = "#0D131D"
-                }}
-              >
-                <span className="text-base sm:text-lg flex-shrink-0">{action.icon}</span>
-                <span className="text-[10px] sm:text-xs font-medium truncate" style={{ color: "#E8EEF7" }}>
-                  {action.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* ═════════════════════════════════════════════════════════ */}
@@ -1684,28 +1722,25 @@ export default function Overview({ onNavigate }: OverviewProps) {
       >
         {/* System Health */}
         <div
-          className="rounded-xl p-4 md:p-5"
+          className="rounded-xl p-4 md:p-5 min-w-0"
           style={{ background: "#111925", border: "1px solid #1D2938" }}
         >
           <div className="mb-4">
             <span
-              className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              💚 SYSTEM HEALTH
+              <SOCIcon name="health" className="w-4 h-4" />
+              System health
             </span>
-            <p className="text-[10px] sm:text-[11px] mt-1" style={{ color: "#394B5E" }}>
+            <p className="text-xs mt-1" style={{ color: "#394B5E" }}>
               Real-time operational status
             </p>
           </div>
 
           <div className="space-y-2.5">
             {Object.entries(systemHealth).map(([name, status]) => {
-              const isHealthy =
-                status === "OPERATIONAL" ||
-                status === "HEALTHY" ||
-                status === "LIVE" ||
-                status === "RUNNING"
+              const isHealthy = isHealthyStatus(status)
               return (
                 <div
                   key={name}
@@ -1715,7 +1750,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                     border: `1px solid ${isHealthy ? "#42D39230" : "#FF4D5E30"}`,
                   }}
                 >
-                  <span className="text-[10px] sm:text-xs capitalize" style={{ color: "#E8EEF7" }}>
+                  <span className="text-xs capitalize" style={{ color: "#E8EEF7" }}>
                     {name}
                   </span>
                   <div className="flex items-center gap-1.5">
@@ -1726,7 +1761,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                       }}
                     />
                     <span
-                      className="text-[9px] sm:text-xs font-mono font-semibold px-2 py-0.5 rounded whitespace-nowrap"
+                      className="text-xs font-mono font-semibold px-2 py-0.5 rounded whitespace-nowrap"
                       style={{
                         background: isHealthy
                           ? "#42D39215"
@@ -1734,7 +1769,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                         color: isHealthy ? "#42D392" : "#FF4D5E",
                       }}
                     >
-                      {status}
+                      {formatHealthStatus(status)}
                     </span>
                   </div>
                 </div>
@@ -1745,17 +1780,18 @@ export default function Overview({ onNavigate }: OverviewProps) {
 
         {/* Vulnerability & KEV Snapshot */}
         <div
-          className="rounded-xl p-4 md:p-5"
+          className="rounded-xl p-4 md:p-5 min-w-0"
           style={{ background: "#111925", border: "1px solid #1D2938" }}
         >
           <div className="mb-4">
             <span
-              className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase"
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              🔐 VULNERABILITY INTELLIGENCE
+              <SOCIcon name="vulnerabilities" className="w-4 h-4" />
+              Vulnerability intelligence
             </span>
-            <p className="text-[10px] sm:text-[11px] mt-1" style={{ color: "#394B5E" }}>
+            <p className="text-xs mt-1" style={{ color: "#394B5E" }}>
               Critical exposures requiring attention
             </p>
           </div>
@@ -1788,7 +1824,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
                   borderLeftWidth: "3px",
                 }}
               >
-                <span className="text-[10px] sm:text-xs" style={{ color: "#9AA8B8" }}>
+                <span className="text-xs" style={{ color: "#9AA8B8" }}>
                   {item.label}
                 </span>
                 <div className="flex items-center gap-2">
@@ -1804,7 +1840,7 @@ export default function Overview({ onNavigate }: OverviewProps) {
 
             <button
               onClick={() => onNavigate("vulnerabilities")}
-              className="w-full mt-3 px-3 py-2 rounded-lg text-[10px] sm:text-xs font-semibold transition-all"
+              className="w-full mt-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
               style={{
                 background: "#56B4FF20",
                 color: "#56B4FF",

@@ -7,6 +7,7 @@ import {
 } from "../lib/sentinel-api"
 import IncidentDrawer from "../components/IncidentDrawer"
 import { ProvenanceBadge } from "../components/ProvenanceBadge"
+import { SOCIcon } from "../components/ui"
 
 const sevColor: Record<string, string> = {
   CRITICAL: "#FF4D5E",
@@ -60,9 +61,10 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
     // Subscribe to WebSocket updates
     const unsubscribe = wsManager.subscribe((msg) => {
       if (msg.type === "INITIAL_STATE" && msg.active_incidents) {
+        const incoming = msg.active_incidents
         setIncidentsList((prev) => {
           const map = new Map(prev.map((i) => [i.incident_id, i]))
-          msg.active_incidents.forEach((inc: Incident) =>
+          incoming.forEach((inc: Incident) =>
             map.set(inc.incident_id, inc),
           )
           return Array.from(map.values())
@@ -169,8 +171,8 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#627083]">
-              INCIDENT INTELLIGENCE & INVESTIGATION
+            <span className="text-xs font-semibold tracking-wider text-[#627083]">
+              Incident Intelligence & Investigation
             </span>
             <ProvenanceBadge type="live" />
           </div>
@@ -195,13 +197,14 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
               border: "1px solid #56B4FF30",
             }}
           >
-            <span>⚡</span> Trigger Test Scenario
+            <SOCIcon name="response" className="w-4 h-4 flex-shrink-0" />
+            Trigger Test Scenario
           </button>
         </div>
       </div>
 
       {/* Severity Metric Cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           {
             label: "ALL INCIDENTS",
@@ -248,7 +251,7 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
                 boxShadow: isSelected ? `0 0 12px ${c.color}20` : "none",
               }}
             >
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-[#627083]">
+              <div className="text-xs font-semibold tracking-wider text-[#627083]">
                 {c.label}
               </div>
               <div
@@ -291,15 +294,15 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
           />
         </div>
 
-        {/* Status Filter */}
-        <div className="flex items-center gap-1.5">
+        {/* Status Filter — wraps so every filter stays reachable on a phone */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-[#627083]">Status:</span>
           {["ALL", "OPEN", "INVESTIGATING", "CONTAINED", "RESOLVED"].map(
             (st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
-                className="px-2 py-1 rounded text-xs font-medium transition-all"
+                className="px-2 py-1 rounded-lg text-xs font-medium transition-all"
                 style={{
                   background: statusFilter === st ? "#1D2938" : "transparent",
                   color: statusFilter === st ? "#F4F7FA" : "#627083",
@@ -349,12 +352,14 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
         </div>
       </div>
 
-      {/* Incidents Table */}
+      {/* Incidents Table — wide security data table. It keeps readable column
+          widths on mobile and scrolls horizontally INSIDE this container;
+          the page itself must never scroll sideways. */}
       <div
-        className="rounded-xl overflow-hidden"
+        className="rounded-xl overflow-x-auto"
         style={{ border: "1px solid #1D2938" }}
       >
-        <table className="w-full text-left">
+        <table className="w-full min-w-[720px] text-left">
           <thead>
             <tr
               style={{
@@ -374,7 +379,7 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
               ].map((h) => (
                 <th
                   key={h}
-                  className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[#627083]"
+                  className="px-4 py-2.5 text-xs font-semibold tracking-wide text-[#627083]"
                 >
                   {h}
                 </th>
@@ -433,7 +438,7 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
                       <div className="text-sm font-semibold text-[#F4F7FA] group-hover:text-[#56B4FF] transition-colors">
                         {inc.title}
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] font-mono text-[#627083] mt-0.5">
+                      <div className="flex items-center gap-2 text-xs font-mono text-[#627083] mt-0.5">
                         <span>{inc.incident_id}</span>
                         <span>·</span>
                         <span>{inc.category}</span>
@@ -457,7 +462,7 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
                     <div className="flex items-center gap-1.5">
                       {primaryTech && (
                         <span
-                          className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                          className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded"
                           style={{
                             background: "rgba(124,140,255,0.15)",
                             color: "#7C8CFF",
@@ -469,7 +474,7 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
                       )}
                       {primaryCve && (
                         <span
-                          className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded"
+                          className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded"
                           style={{
                             background: "rgba(255,138,76,0.15)",
                             color: "#FF8A4C",
@@ -508,7 +513,7 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
 
                   <td className="px-4 py-3">
                     <span
-                      className="text-[11px] font-medium px-2 py-0.5 rounded"
+                      className="text-xs font-medium px-2 py-0.5 rounded"
                       style={{
                         color: statusConfig[inc.status]?.color ?? "#9AA8B8",
                         background: statusConfig[inc.status]?.bg ?? "#1D2938",
@@ -550,9 +555,9 @@ export default function Incidents({ onNavigate }: IncidentsProps) {
             Showing {filteredAndSorted.length} of {incidentsList.length}{" "}
             incidents
           </span>
-          <span className="text-[11px] font-mono text-[#42D392] flex items-center gap-1">
+          <span className="text-xs font-mono text-[#42D392] flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse" />
-            LIVE TELEMETRY STREAM
+            Live Telemetry Stream
           </span>
         </div>
       </div>

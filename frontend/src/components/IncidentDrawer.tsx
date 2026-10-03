@@ -7,6 +7,7 @@ import {
   simulateResponseAction,
 } from "../lib/sentinel-api"
 import { ProvenanceBadge } from "./ProvenanceBadge"
+import { SOCIcon } from "./ui"
 
 const sevColor: Record<string, string> = {
   CRITICAL: "#FF4D5E",
@@ -20,6 +21,33 @@ const statusConfig: Record<string, { color: string; bg: string }> = {
   INVESTIGATING: { color: "#FF4D5E", bg: "rgba(255,77,94,0.12)" },
   CONTAINED: { color: "#F4C95D", bg: "rgba(244,201,93,0.12)" },
   RESOLVED: { color: "#42D392", bg: "rgba(66,211,146,0.12)" },
+}
+
+/**
+ * Map an upstream AI failure onto a short, user-safe sentence.
+ *
+ * The backend already reduces every inference failure to a structured category,
+ * so this only selects the matching wording. A raw provider/gateway payload is
+ * never rendered: uncategorised failures (network abort, timeout, unexpected
+ * body) fall back to a single generic sentence.
+ */
+const AI_CATEGORY_MESSAGES: Record<string, string> = {
+  AI_RATE_LIMITED: "AI analysis is temporarily rate-limited. Please try again shortly.",
+  AI_PROVIDER_UNAVAILABLE:
+    "The AI analysis provider is temporarily unavailable. Please try again shortly.",
+  AI_AUTHENTICATION_FAILED:
+    "AI analysis is not configured correctly on the server. Please contact an administrator.",
+  AI_REQUEST_FAILED: "AI analysis could not be completed. Please try again.",
+  AI_TIMEOUT: "AI analysis timed out. Please try again.",
+  AI_CANCELLED: "AI analysis was cancelled.",
+}
+
+function aiUserSafeMessage(err: unknown): string {
+  const category =
+    err && typeof err === "object" && "category" in err
+      ? String((err as { category?: unknown }).category ?? "")
+      : ""
+  return AI_CATEGORY_MESSAGES[category] ?? AI_CATEGORY_MESSAGES.AI_REQUEST_FAILED
 }
 
 interface IncidentDrawerProps {
@@ -40,6 +68,7 @@ export default function IncidentDrawer({
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResponse | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [aiDegraded, setAiDegraded] = useState(false)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [actionFeedback, setActionFeedback] = useState<Record<string, string>>(
     {},
@@ -51,6 +80,7 @@ export default function IncidentDrawer({
     if (incident) {
       setAiAnalysis(incident.ai_analysis || null)
       setAiError(null)
+      setAiDegraded(false)
       setActionFeedback({})
       setActiveTab("overview")
     }
@@ -97,6 +127,14 @@ export default function IncidentDrawer({
     try {
       const result = await aiTriageIncident(incident.incident_id)
       setAiAnalysis(result)
+      // The response says whether the upstream model actually answered.
+      // Surface that honestly instead of implying an AI verdict either way.
+      setAiDegraded(result.ai_status === "degraded")
+      if (result.ai_status === "degraded") {
+        console.warn(
+          `Sentinel AI ran in degraded mode (${result.ai_error_category ?? "unknown"}): ${result.ai_message ?? ""}`,
+        )
+      }
       if (onIncidentUpdated) {
         onIncidentUpdated({
           ...incident,
@@ -105,11 +143,8 @@ export default function IncidentDrawer({
           risk_score: result.risk_score,
         })
       }
-    } catch (err: any) {
-      setAiError(
-        err.message ||
-          "AI triage service temporarily unavailable. Please retry.",
-      )
+    } catch (err: unknown) {
+      setAiError(aiUserSafeMessage(err))
     } finally {
       setIsAnalyzing(false)
     }
@@ -331,8 +366,8 @@ export default function IncidentDrawer({
               >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-semibold tracking-wider uppercase text-[#627083]">
-                      ATTACK KILL CHAIN STAGE
+                    <span className="text-xs font-semibold tracking-wider text-[#627083]">
+                      Attack Kill Chain Stage
                     </span>
                     <ProvenanceBadge type="derived" />
                   </div>
@@ -344,8 +379,8 @@ export default function IncidentDrawer({
 
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <div className="text-[10px] font-semibold tracking-wider uppercase text-[#627083]">
-                      RISK SCORE
+                    <div className="text-xs font-semibold tracking-wider text-[#627083]">
+                      Risk Score
                     </div>
                     <div
                       className="text-xl font-mono font-bold"
@@ -372,8 +407,8 @@ export default function IncidentDrawer({
                 className="rounded-xl p-4"
                 style={{ background: "#111925", border: "1px solid #1D2938" }}
               >
-                <span className="text-xs font-semibold tracking-wider uppercase text-[#627083] block mb-2">
-                  INCIDENT SUMMARY
+                <span className="text-xs font-semibold tracking-wider text-[#627083] block mb-2">
+                  Incident Summary
                 </span>
                 <p className="text-sm leading-relaxed text-[#9AA8B8]">
                   {incident.summary}
@@ -386,8 +421,8 @@ export default function IncidentDrawer({
                   className="rounded-xl p-3.5"
                   style={{ background: "#111925", border: "1px solid #1D2938" }}
                 >
-                  <span className="text-[10px] font-semibold uppercase text-[#627083] block mb-1">
-                    SOURCE IDENTIFIERS
+                  <span className="text-xs font-semibold text-[#627083] block mb-1">
+                    Source Identifiers
                   </span>
                   <div className="space-y-1">
                     {(incident.source_ips && incident.source_ips.length > 0
@@ -408,8 +443,8 @@ export default function IncidentDrawer({
                   className="rounded-xl p-3.5"
                   style={{ background: "#111925", border: "1px solid #1D2938" }}
                 >
-                  <span className="text-[10px] font-semibold uppercase text-[#627083] block mb-1">
-                    AFFECTED ASSETS
+                  <span className="text-xs font-semibold text-[#627083] block mb-1">
+                    Affected Assets
                   </span>
                   <div className="space-y-1">
                     {(incident.affected_targets &&
@@ -435,18 +470,18 @@ export default function IncidentDrawer({
                   style={{ background: "#111925", border: "1px solid #1D2938" }}
                 >
                   <div className="flex items-center justify-between mb-2.5">
-                    <span className="text-xs font-semibold tracking-wider uppercase text-[#627083]">
-                      ASSOCIATED CVE EXPLOITATION INTELLIGENCE
+                    <span className="text-xs font-semibold tracking-wider text-[#627083]">
+                      Associated CVE Exploitation Intelligence
                     </span>
                     <span
-                      className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded"
+                      className="text-xs font-mono font-semibold px-2 py-0.5 rounded"
                       style={{
                         background: "rgba(255,138,76,0.15)",
                         color: "#FF8A4C",
                         border: "1px solid rgba(255,138,76,0.3)",
                       }}
                     >
-                      CISA KEV ACTIVE
+                      CISA KEV Active
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -463,13 +498,13 @@ export default function IncidentDrawer({
                           {cve}
                         </span>
                         <span
-                          className="text-[10px] px-1.5 py-0.2 rounded font-semibold"
+                          className="text-xs px-1.5 py-1 rounded font-semibold"
                           style={{
                             background: "rgba(255,77,94,0.15)",
                             color: "#FF4D5E",
                           }}
                         >
-                          KEV EXPLOITED
+                          KEV Exploited
                         </span>
                       </div>
                     ))}
@@ -483,8 +518,8 @@ export default function IncidentDrawer({
                   className="rounded-xl p-4"
                   style={{ background: "#111925", border: "1px solid #1D2938" }}
                 >
-                  <span className="text-xs font-semibold tracking-wider uppercase text-[#627083] block mb-3">
-                    MITRE ATT&CK TECHNIQUE CORRELATION
+                  <span className="text-xs font-semibold tracking-wider text-[#627083] block mb-3">
+                    MITRE ATT&CK Technique Correlation
                   </span>
                   <div className="space-y-2">
                     {incident.techniques.map((tech) => (
@@ -505,12 +540,12 @@ export default function IncidentDrawer({
                               {tech.name}
                             </span>
                           </div>
-                          <p className="text-[11px] text-[#627083] mt-0.5">
+                          <p className="text-xs text-[#627083] mt-0.5">
                             {tech.description}
                           </p>
                         </div>
                         <span
-                          className="text-[10px] font-mono px-2 py-0.5 rounded text-[#9AA8B8]"
+                          className="text-xs font-mono px-2 py-0.5 rounded text-[#9AA8B8]"
                           style={{ background: "#1D2938" }}
                         >
                           {tech.tactic}
@@ -531,8 +566,8 @@ export default function IncidentDrawer({
                       border: "1px solid #1D2938",
                     }}
                   >
-                    <span className="text-xs font-semibold tracking-wider uppercase text-[#627083] block mb-2.5">
-                      RECOMMENDED SOC RESPONSE ACTIONS
+                    <span className="text-xs font-semibold tracking-wider text-[#627083] block mb-2.5">
+                      Recommended SOC Response Actions
                     </span>
                     <ul className="space-y-2">
                       {incident.recommended_actions.map((act, i) => (
@@ -562,9 +597,12 @@ export default function IncidentDrawer({
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-[#7C8CFF]">
-                      SENTINEL AI DEFENSIVE ANALYST
+                      Sentinel AI Defensive Analyst
                     </span>
-                    <ProvenanceBadge type="inferred" />
+                    {/* Provenance reflects what actually happened: model
+                        inference while the LLM answered, derived rule-based
+                        analysis when the inference path degraded. */}
+                    <ProvenanceBadge type={aiDegraded ? "derived" : "inferred"} />
                   </div>
                   <p className="text-xs text-[#9AA8B8]">
                     Real-time defensive triage, kill chain progression, and
@@ -589,15 +627,15 @@ export default function IncidentDrawer({
                   {isAnalyzing ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-[#56B4FF] border-t-transparent rounded-full animate-spin" />
-                      <span>TRIAGING...</span>
+                      <span>Triaging…</span>
                     </>
                   ) : (
                     <>
-                      <span>⚡</span>
+                      <SOCIcon name="ai-analyst" className="w-4 h-4" />
                       <span>
                         {aiAnalysis
-                          ? "RE-ANALYZE INCIDENT"
-                          : "ANALYZE INCIDENT"}
+                          ? "Re-analyze incident"
+                          : "Analyze incident"}
                       </span>
                     </>
                   )}
@@ -617,7 +655,7 @@ export default function IncidentDrawer({
                   </div>
                   <button
                     onClick={handleRunAiTriage}
-                    className="text-xs font-semibold px-2 py-1 rounded bg-[#FF4D5E20] text-[#FF4D5E] hover:bg-[#FF4D5E30]"
+                    className="text-xs font-semibold px-2 py-1 rounded-lg bg-[#FF4D5E20] text-[#FF4D5E] hover:bg-[#FF4D5E30]"
                   >
                     Retry
                   </button>
@@ -635,8 +673,8 @@ export default function IncidentDrawer({
                         border: "1px solid #1D2938",
                       }}
                     >
-                      <span className="text-[10px] font-semibold uppercase text-[#627083] block mb-1">
-                        RISK LEVEL
+                      <span className="text-xs font-semibold text-[#627083] block mb-1">
+                        Risk Level
                       </span>
                       <span
                         className="text-lg font-bold font-mono"
@@ -655,8 +693,8 @@ export default function IncidentDrawer({
                         border: "1px solid #1D2938",
                       }}
                     >
-                      <span className="text-[10px] font-semibold uppercase text-[#627083] block mb-1">
-                        AI CONFIDENCE
+                      <span className="text-xs font-semibold text-[#627083] block mb-1">
+                        AI Confidence
                       </span>
                       <span className="text-lg font-bold font-mono text-[#42D392]">
                         {Math.round(aiAnalysis.confidence * 100)}%
@@ -670,8 +708,8 @@ export default function IncidentDrawer({
                         border: "1px solid #1D2938",
                       }}
                     >
-                      <span className="text-[10px] font-semibold uppercase text-[#627083] block mb-1">
-                        MODEL
+                      <span className="text-xs font-semibold text-[#627083] block mb-1">
+                        Model
                       </span>
                       <span className="text-xs font-mono text-[#9AA8B8] truncate block">
                         {aiAnalysis.model || "Expert Defensive Engine"}
@@ -688,8 +726,8 @@ export default function IncidentDrawer({
                     }}
                   >
                     <div>
-                      <span className="text-xs font-semibold uppercase text-[#7C8CFF] block mb-1">
-                        EXPLANATION
+                      <span className="text-xs font-semibold text-[#7C8CFF] block mb-1">
+                        Explanation
                       </span>
                       <p className="text-sm text-[#F4F7FA] leading-relaxed">
                         {aiAnalysis.summary}
@@ -701,8 +739,8 @@ export default function IncidentDrawer({
                         className="pt-3"
                         style={{ borderTop: "1px solid #1D2938" }}
                       >
-                        <span className="text-xs font-semibold uppercase text-[#F4C95D] block mb-1">
-                          LIKELY IMPACT
+                        <span className="text-xs font-semibold text-[#F4C95D] block mb-1">
+                          Likely Impact
                         </span>
                         <p className="text-xs text-[#9AA8B8] leading-relaxed">
                           {aiAnalysis.why_it_matters}
@@ -719,8 +757,8 @@ export default function IncidentDrawer({
                       border: "1px solid #1D2938",
                     }}
                   >
-                    <span className="text-xs font-semibold tracking-wider uppercase text-[#627083] block mb-3">
-                      4-TIER EVIDENCE CLASSIFICATION
+                    <span className="text-xs font-semibold tracking-wider text-[#627083] block mb-3">
+                      4-Tier Evidence Classification
                     </span>
                     <div className="grid grid-cols-2 gap-3">
                       {/* Observed */}
@@ -733,7 +771,7 @@ export default function IncidentDrawer({
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-semibold text-[#42D392]">
-                            OBSERVED FACTS
+                            Observed Facts
                           </span>
                           <ProvenanceBadge type="live" />
                         </div>
@@ -757,7 +795,7 @@ export default function IncidentDrawer({
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-semibold text-[#7C8CFF]">
-                            AI INFERENCE
+                            AI Inference
                           </span>
                           <ProvenanceBadge type="inferred" />
                         </div>
@@ -783,8 +821,8 @@ export default function IncidentDrawer({
                           border: "1px solid #1D2938",
                         }}
                       >
-                        <span className="text-xs font-semibold tracking-wider uppercase text-[#42D392] block mb-2.5">
-                          RECOMMENDED IMMEDIATE RESPONSE
+                        <span className="text-xs font-semibold tracking-wider text-[#42D392] block mb-2.5">
+                          Recommended Immediate Response
                         </span>
                         <ul className="space-y-2">
                           {aiAnalysis.immediate_response.map((step, i) => (
@@ -857,7 +895,7 @@ export default function IncidentDrawer({
                         <span className="font-mono font-bold text-[#56B4FF]">
                           {evId}
                         </span>
-                        <span className="text-[10px] font-mono text-[#627083]">
+                        <span className="text-xs font-mono text-[#627083]">
                           Step {idx + 1}
                         </span>
                       </div>
@@ -882,7 +920,7 @@ export default function IncidentDrawer({
                   border: "1px solid rgba(244,201,93,0.25)",
                 }}
               >
-                <span className="text-sm">⚠</span>
+                <SOCIcon name="warning" className="w-4 h-4 flex-shrink-0 text-[#F4C95D]" />
                 <span className="text-xs text-[#F4C95D]">
                   Response actions operate in safe simulation mode with complete
                   audit logging.
@@ -926,7 +964,7 @@ export default function IncidentDrawer({
                         {act.desc}
                       </p>
                       {actionFeedback[act.id] && (
-                        <div className="text-[11px] font-mono text-[#42D392] mt-1.5">
+                        <div className="text-xs font-mono text-[#42D392] mt-1.5">
                           ✓ {actionFeedback[act.id]}
                         </div>
                       )}

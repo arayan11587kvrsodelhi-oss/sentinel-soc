@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { ProvenanceBadge } from "../components/ProvenanceBadge"
+import { SOCIcon } from "../components/ui"
 
 const timelineEvents = [
   {
@@ -92,6 +93,42 @@ export default function IncidentInvestigation({
   const [activeTab, setActiveTab] =
     useState<"overview" | "timeline" | "evidence">("overview")
 
+  /**
+   * Client-side report export. The investigation dataset is bundled with the
+   * screen, so the report is assembled and downloaded in the browser — no
+   * backend round-trip and no invented endpoint.
+   */
+  const handleExportReport = () => {
+    const report = [
+      "SENTINEL SOC - INCIDENT INVESTIGATION REPORT",
+      "=============================================",
+      `Generated: ${new Date().toISOString()}`,
+      "",
+      "DETECTION CONDITIONS",
+      ...detectionConditions.map(
+        (c) => `  [${c.met ? "x" : " "}] ${c.label}`,
+      ),
+      "",
+      "EVIDENCE",
+      ...evidence.map((e) => `  - ${e.key}: ${e.value}`),
+      "",
+      "TIMELINE",
+      ...timelineEvents.map((t) => `  ${t.time}  ${t.title} -- ${t.desc}`),
+      "",
+      "Educational system - all telemetry is simulated or derived.",
+    ].join("\n")
+
+    const blob = new Blob([report], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "incident-investigation-report.txt"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -119,7 +156,7 @@ export default function IncidentInvestigation({
                 border: "1px solid #FF4D5E30",
               }}
             >
-              CRITICAL INCIDENT
+              Critical Incident
             </div>
             <h1 className="text-xl font-semibold" style={{ color: "#F4F7FA" }}>
               Credential Attack
@@ -164,7 +201,7 @@ export default function IncidentInvestigation({
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Risk Score with gauge bar */}
         <div
           className="rounded-xl p-4"
@@ -172,10 +209,10 @@ export default function IncidentInvestigation({
         >
           <div className="flex items-start justify-between mb-2">
             <span
-              className="text-[10px] font-semibold tracking-widest uppercase"
+              className="text-xs font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              RISK SCORE
+              Risk Score
             </span>
             <ProvenanceBadge type="derived" />
           </div>
@@ -211,10 +248,10 @@ export default function IncidentInvestigation({
         >
           <div className="flex items-start justify-between mb-2">
             <span
-              className="text-[10px] font-semibold tracking-widest uppercase"
+              className="text-xs font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              SEVERITY
+              Severity
             </span>
             <ProvenanceBadge type="derived" />
           </div>
@@ -227,7 +264,7 @@ export default function IncidentInvestigation({
               CRITICAL
             </span>
           </div>
-          <span className="text-[10px]" style={{ color: "#627083" }}>
+          <span className="text-xs" style={{ color: "#627083" }}>
             Highest severity level
           </span>
         </div>
@@ -239,7 +276,7 @@ export default function IncidentInvestigation({
         >
           <div className="flex items-start justify-between mb-2">
             <span
-              className="text-[10px] font-semibold tracking-widest uppercase"
+              className="text-xs font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
               MITRE ATT&CK
@@ -264,10 +301,10 @@ export default function IncidentInvestigation({
         >
           <div className="flex items-start justify-between mb-2">
             <span
-              className="text-[10px] font-semibold tracking-widest uppercase"
+              className="text-xs font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              AI CONFIDENCE
+              AI Confidence
             </span>
             <ProvenanceBadge type="inferred" />
           </div>
@@ -321,19 +358,19 @@ export default function IncidentInvestigation({
       </div>
 
       {activeTab === "overview" && (
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Attack Timeline (left) */}
-          <div className="col-span-3 space-y-4">
+          <div className="col-span-1 lg:col-span-3 space-y-4">
             <div
               className="rounded-xl p-5"
               style={{ background: "#111925", border: "1px solid #1D2938" }}
             >
               <div className="flex items-center justify-between mb-5">
                 <span
-                  className="text-xs font-semibold tracking-widest uppercase"
+                  className="text-xs font-semibold tracking-wide"
                   style={{ color: "#627083" }}
                 >
-                  ATTACK TIMELINE
+                  Attack Timeline
                 </span>
                 <ProvenanceBadge type="simulated" />
               </div>
@@ -377,13 +414,13 @@ export default function IncidentInvestigation({
                           </span>
                           {event.critical && (
                             <span
-                              className="text-[10px] px-1.5 py-0 rounded font-semibold"
+                              className="text-xs px-1.5 py-0 rounded font-semibold"
                               style={{
                                 background: "#FF4D5E20",
                                 color: "#FF4D5E",
                               }}
                             >
-                              KEY EVENT
+                              Key Event
                             </span>
                           )}
                         </div>
@@ -426,10 +463,10 @@ export default function IncidentInvestigation({
             >
               <div className="flex items-center justify-between mb-4">
                 <span
-                  className="text-xs font-semibold tracking-widest uppercase"
+                  className="text-xs font-semibold tracking-wide"
                   style={{ color: "#627083" }}
                 >
-                  WHY WAS THIS DETECTED?
+                  Why Was This Detected?
                 </span>
                 <ProvenanceBadge type="derived" />
               </div>
@@ -440,7 +477,7 @@ export default function IncidentInvestigation({
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span
-                    className="text-[10px] uppercase font-semibold"
+                    className="text-xs font-semibold"
                     style={{ color: "#627083" }}
                   >
                     Rule
@@ -519,7 +556,7 @@ export default function IncidentInvestigation({
           </div>
 
           {/* Right column: Evidence + AI snippet */}
-          <div className="col-span-2 space-y-4">
+          <div className="col-span-1 lg:col-span-2 space-y-4">
             {/* Evidence */}
             <div
               className="rounded-xl p-4"
@@ -527,10 +564,10 @@ export default function IncidentInvestigation({
             >
               <div className="flex items-center justify-between mb-4">
                 <span
-                  className="text-xs font-semibold tracking-widest uppercase"
+                  className="text-xs font-semibold tracking-wide"
                   style={{ color: "#627083" }}
                 >
-                  EVIDENCE
+                  Evidence
                 </span>
                 <ProvenanceBadge type="simulated" />
               </div>
@@ -573,10 +610,10 @@ export default function IncidentInvestigation({
             >
               <div className="flex items-center justify-between mb-3">
                 <span
-                  className="text-xs font-semibold tracking-widest uppercase"
+                  className="text-xs font-semibold tracking-wide"
                   style={{ color: "#627083" }}
                 >
-                  AI ASSESSMENT
+                  AI Assessment
                 </span>
                 <ProvenanceBadge type="inferred" />
               </div>
@@ -629,10 +666,10 @@ export default function IncidentInvestigation({
               style={{ background: "#111925", border: "1px solid #1D2938" }}
             >
               <span
-                className="text-xs font-semibold tracking-widest uppercase block mb-3"
+                className="text-xs font-semibold tracking-wide block mb-3"
                 style={{ color: "#627083" }}
               >
-                QUICK ACTIONS
+                Quick Actions
               </span>
               <div className="space-y-2">
                 <button
@@ -644,7 +681,7 @@ export default function IncidentInvestigation({
                     border: "1px solid #FF4D5E25",
                   }}
                 >
-                  <span>⚠</span> Simulate Response
+                  <SOCIcon name="warning" className="w-4 h-4 flex-shrink-0" /> Simulate Response
                 </button>
                 <button
                   onClick={() => onNavigate("ai-analyst")}
@@ -658,7 +695,9 @@ export default function IncidentInvestigation({
                   <span>△</span> AI Analysis
                 </button>
                 <button
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                  type="button"
+                  onClick={handleExportReport}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer hover:brightness-125"
                   style={{ background: "#1D2938", color: "#9AA8B8" }}
                 >
                   <span>↗</span> Export Report
@@ -676,10 +715,10 @@ export default function IncidentInvestigation({
         >
           <div className="flex items-center justify-between mb-6">
             <span
-              className="text-xs font-semibold tracking-widest uppercase"
+              className="text-xs font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
-              FULL ATTACK TIMELINE
+              Full Attack Timeline
             </span>
             <ProvenanceBadge type="simulated" />
           </div>
@@ -727,17 +766,17 @@ export default function IncidentInvestigation({
       )}
 
       {activeTab === "evidence" && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div
             className="rounded-xl p-5"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <div className="flex items-center justify-between mb-4">
               <span
-                className="text-xs font-semibold tracking-widest uppercase"
+                className="text-xs font-semibold tracking-wide"
                 style={{ color: "#627083" }}
               >
-                EVIDENCE SUMMARY
+                Evidence Summary
               </span>
               <ProvenanceBadge type="simulated" />
             </div>
@@ -749,7 +788,7 @@ export default function IncidentInvestigation({
                   style={{ background: "#0D131D", border: "1px solid #1D2938" }}
                 >
                   <span
-                    className="text-[11px] uppercase font-semibold"
+                    className="text-xs font-semibold"
                     style={{ color: "#627083" }}
                   >
                     {e.key}
@@ -771,10 +810,10 @@ export default function IncidentInvestigation({
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-4"
+              className="text-xs font-semibold tracking-wide block mb-4"
               style={{ color: "#627083" }}
             >
-              RAW LOG EXCERPTS
+              Raw Log Excerpts
             </span>
             <div
               className="rounded-lg p-3 text-xs font-mono space-y-1.5"

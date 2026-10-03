@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { ProvenanceBadge } from "../components/ProvenanceBadge"
+import { SOCIcon } from "../components/ui"
 
 interface AIAnalystProps {
   onNavigate: (screen: string) => void
@@ -25,14 +26,14 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
                 border: "1px solid #7C8CFF25",
               }}
             >
-              △ AI GENERATED
+              △ AI Generated
             </span>
             <span className="text-xs" style={{ color: "#627083" }}>
               Powered by Sentinel Expert Engine
             </span>
           </div>
           <h1 className="text-xl font-semibold" style={{ color: "#F4F7FA" }}>
-            SENTINEL ANALYST
+            Sentinel Analyst
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "#9AA8B8" }}>
             AI-Assisted Investigation — INC-2026-00842
@@ -48,14 +49,14 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
             }}
           >
             <div className="w-1.5 h-1.5 rounded-full bg-[#42D392] animate-pulse" />
-            ANALYSIS COMPLETE
+            Analysis Complete
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Main AI Analysis Panel */}
-        <div className="col-span-3 space-y-4">
+        <div className="col-span-1 lg:col-span-3 space-y-4">
           {/* Assessment */}
           <div
             className="rounded-xl p-5"
@@ -63,10 +64,10 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
           >
             <div className="flex items-center justify-between mb-4">
               <span
-                className="text-xs font-semibold tracking-widest uppercase"
+                className="text-xs font-semibold tracking-wide"
                 style={{ color: "#627083" }}
               >
-                ASSESSMENT
+                Assessment
               </span>
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -102,13 +103,13 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
               </div>
               <div className="flex justify-between mt-1">
                 <span
-                  className="text-[9px] font-mono"
+                  className="text-xs font-mono"
                   style={{ color: "#394B5E" }}
                 >
                   0%
                 </span>
                 <span
-                  className="text-[9px] font-mono"
+                  className="text-xs font-mono"
                   style={{ color: "#394B5E" }}
                 >
                   100%
@@ -145,10 +146,10 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
           >
             <div className="flex items-center justify-between mb-4">
               <span
-                className="text-xs font-semibold tracking-widest uppercase"
+                className="text-xs font-semibold tracking-wide"
                 style={{ color: "#627083" }}
               >
-                SUPPORTING EVIDENCE
+                Supporting Evidence
               </span>
               <ProvenanceBadge type="simulated" />
             </div>
@@ -213,10 +214,10 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
           >
             <div className="flex items-center justify-between mb-4">
               <span
-                className="text-xs font-semibold tracking-widest uppercase"
+                className="text-xs font-semibold tracking-wide"
                 style={{ color: "#627083" }}
               >
-                RECOMMENDED ACTIONS
+                Recommended Actions
               </span>
               <ProvenanceBadge type="inferred" />
             </div>
@@ -289,7 +290,7 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
                 >
                   <span
                     className="text-xl font-semibold font-mono flex-shrink-0 mt-0.5"
-                    style={{ color: "#1D2938" }}
+                    style={{ color: "#627083" }}
                   >
                     {rec.num}
                   </span>
@@ -302,7 +303,7 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
                         {rec.title}
                       </span>
                       <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                        className="text-xs px-1.5 py-0.5 rounded font-semibold"
                         style={{
                           background: rec.urgencyColor + "15",
 
@@ -326,7 +327,7 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
 
           {/* Action Buttons */}
           {!dismissed && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={() => onNavigate("response")}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all"
@@ -336,7 +337,7 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
                   border: "1px solid #FF8A4C30",
                 }}
               >
-                <span>⚠</span> Simulate Response
+                <SOCIcon name="warning" className="w-4 h-4 flex-shrink-0" /> Simulate Response
               </button>
               <button
                 onClick={() => {
@@ -382,16 +383,16 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
         </div>
 
         {/* Incident Context Panel */}
-        <div className="col-span-2 space-y-4">
+        <div className="col-span-1 lg:col-span-2 space-y-4">
           <div
             className="rounded-xl p-4"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-3"
+              className="text-xs font-semibold tracking-wide block mb-3"
               style={{ color: "#627083" }}
             >
-              INCIDENT CONTEXT
+              Incident Context
             </span>
             <div className="space-y-3">
               {[
@@ -460,7 +461,7 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-3"
+              className="text-xs font-semibold tracking-wide block mb-3"
               style={{ color: "#627083" }}
             >
               MITRE ATT&CK
@@ -514,10 +515,10 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-3"
+              className="text-xs font-semibold tracking-wide block mb-3"
               style={{ color: "#627083" }}
             >
-              RELATED INCIDENTS
+              Related Incidents
             </span>
             {[
               {
@@ -552,7 +553,7 @@ export default function AIAnalyst({ onNavigate }: AIAnalystProps) {
                     {r.title}
                   </p>
                   <p
-                    className="text-[10px] font-mono"
+                    className="text-xs font-mono"
                     style={{ color: "#627083" }}
                   >
                     {r.id} · {r.time}

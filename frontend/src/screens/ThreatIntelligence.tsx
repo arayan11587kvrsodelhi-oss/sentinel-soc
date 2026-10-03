@@ -208,15 +208,15 @@ export default function ThreatIntelligence() {
       </div>
 
       {/* Source Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {sources.map((src) => (
           <div
             key={src.name}
             className="rounded-xl p-4"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
-            <div className="flex items-start justify-between mb-3">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+              <div className="min-w-0">
                 <h3
                   className="text-sm font-semibold"
                   style={{ color: "#F4F7FA" }}
@@ -249,12 +249,12 @@ export default function ThreatIntelligence() {
                 >
                   {src.count}
                 </div>
-                <div className="text-[10px]" style={{ color: "#627083" }}>
+                <div className="text-xs" style={{ color: "#627083" }}>
                   new today
                 </div>
               </div>
             </div>
-            <div className="text-[10px] mt-1" style={{ color: "#627083" }}>
+            <div className="text-xs mt-1" style={{ color: "#627083" }}>
               Last sync: {src.lastSync}
             </div>
           </div>
@@ -263,7 +263,7 @@ export default function ThreatIntelligence() {
 
       {/* Filters */}
       <div
-        className="flex items-center gap-4 px-3 py-2.5 rounded-lg"
+        className="flex flex-wrap items-center gap-4 px-3 py-2.5 rounded-lg"
         style={{ background: "#0D131D", border: "1px solid #1D2938" }}
       >
         <span className="text-xs" style={{ color: "#627083" }}>
@@ -273,7 +273,7 @@ export default function ThreatIntelligence() {
           <button
             key={v}
             onClick={() => setCvssFilter(v)}
-            className="px-2.5 py-1 rounded text-xs font-medium transition-all"
+            className="px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
             style={{
               background: cvssFilter === v ? "#1D2938" : "transparent",
 
@@ -288,7 +288,7 @@ export default function ThreatIntelligence() {
 
         <button
           onClick={() => setKevOnly(!kevOnly)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
           style={{
             background: kevOnly ? "#FF4D5E15" : "transparent",
 
@@ -306,9 +306,21 @@ export default function ThreatIntelligence() {
       </div>
 
       {/* CVE Cards + Detail */}
-      <div className={selectedCve ? "grid grid-cols-5 gap-4" : "block"}>
-        <div className={selectedCve ? "col-span-3" : "col-span-5"}>
-          <div className="grid grid-cols-2 gap-3">
+      <div
+        className={
+          selectedCve
+            ? "grid grid-cols-1 lg:grid-cols-5 gap-4"
+            : "block"
+        }
+      >
+        <div
+          className={
+            selectedCve
+              ? "col-span-1 lg:col-span-3"
+              : "col-span-1 lg:col-span-5"
+          }
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {filtered.map((cve) => (
               <div
                 key={cve.id}
@@ -335,7 +347,7 @@ export default function ThreatIntelligence() {
                     </span>
                     {cve.kev && (
                       <span
-                        className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                        className="ml-2 text-xs px-1.5 py-0.5 rounded font-semibold"
                         style={{ background: "#FF4D5E20", color: "#FF4D5E" }}
                       >
                         KEV
@@ -373,7 +385,7 @@ export default function ThreatIntelligence() {
                   {cve.description}
                 </p>
 
-                <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center justify-between text-xs">
                   <span style={{ color: "#627083" }}>
                     {cve.vendor} · {cve.product}
                   </span>
@@ -385,17 +397,17 @@ export default function ThreatIntelligence() {
         </div>
 
         {selectedCve && (
-          <div className="col-span-2 space-y-4">
+          <div className="col-span-1 lg:col-span-2 space-y-4">
             <div
               className="rounded-xl p-4"
               style={{ background: "#111925", border: "1px solid #56B4FF30" }}
             >
               <div className="flex items-center justify-between mb-3">
                 <span
-                  className="text-xs font-semibold tracking-widest uppercase"
+                  className="text-xs font-semibold tracking-wide"
                   style={{ color: "#627083" }}
                 >
-                  VULNERABILITY DETAIL
+                  Vulnerability Detail
                 </span>
                 <button
                   onClick={() => setSelectedCve(null)}
@@ -438,7 +450,7 @@ export default function ThreatIntelligence() {
                     >
                       {selectedCve.cvss}
                     </div>
-                    <div className="text-[10px]" style={{ color: "#627083" }}>
+                    <div className="text-xs" style={{ color: "#627083" }}>
                       CVSS Score
                     </div>
                   </div>
@@ -456,7 +468,7 @@ export default function ThreatIntelligence() {
                       />
                     </div>
                     <div
-                      className="flex justify-between mt-1 text-[9px]"
+                      className="flex justify-between mt-1 text-xs"
                       style={{ color: "#627083" }}
                     >
                       <span>0.0</span>
@@ -501,10 +513,10 @@ export default function ThreatIntelligence() {
 
                 <div>
                   <span
-                    className="text-[10px] font-semibold uppercase tracking-wider block mb-2"
+                    className="text-xs font-semibold tracking-wider block mb-2"
                     style={{ color: "#627083" }}
                   >
-                    AFFECTED ASSETS
+                    Affected Assets
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedCve.affected.map((asset) => (
@@ -524,16 +536,24 @@ export default function ThreatIntelligence() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button
-                    className="flex-1 py-2 rounded-lg text-xs font-medium"
-                    style={{
-                      background: "#FF4D5E15",
-                      color: "#FF4D5E",
-                      border: "1px solid #FF4D5E25",
-                    }}
-                  >
-                    View Intelligence
-                  </button>
+                <button
+                  onClick={() =>
+                    window.open(
+                      `https://nvd.nist.gov/vuln/detail/${selectedCve.id}`,
+                      "_blank",
+                      "noopener,noreferrer",
+                    )
+                  }
+                  className="flex-1 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all hover:opacity-80"
+                  style={{
+                    background: "#FF4D5E15",
+                    color: "#FF4D5E",
+                    border: "1px solid #FF4D5E25",
+                  }}
+                  aria-label={`View full intelligence for ${selectedCve.id} on NVD`}
+                >
+                  View Intelligence
+                </button>
                 </div>
               </div>
             </div>

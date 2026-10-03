@@ -8,6 +8,45 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
+/* =========================================================
+   SENTINEL SOC DESIGN TOKENS (Tailwind v4 CSS-first config)
+   Mirrors src/lib/design-tokens.ts so both class utilities and
+   inline styles resolve to the same semantic palette.
+   ========================================================= */
+@theme {
+  /* Surfaces & structure */
+  --color-soc-base: #070b12;
+  --color-soc-chrome: #0d131d;
+  --color-soc-panel: #111925;
+  --color-soc-raised: #131c2a;
+  --color-soc-border: #1d2938;
+  --color-soc-border-strong: #2d3f55;
+
+  /* Semantic text roles */
+  --color-soc-primary: #f4f7fa;
+  --color-soc-strong: #e8eef7;
+  --color-soc-secondary: #9aa8b8;
+  --color-soc-muted: #627083;
+  --color-soc-faint: #394b5e;
+  --color-soc-accent: #7c8cff;
+  --color-soc-link: #56b4ff;
+  --color-soc-inverse: #ffffff;
+
+  /* Semantic status roles (security meaning is preserved) */
+  --color-soc-success: #42d392;
+  --color-soc-warning: #f4c95d;
+  --color-soc-caution: #ff8a4c;
+  --color-soc-danger: #ff4d5e;
+
+  /* Radius scale */
+  --radius-soc-sm: 6px;
+  --radius-soc-md: 8px;
+  --radius-soc-lg: 12px;
+
+  /* Spacing scale for interactive targets */
+  --spacing-soc-touch: 44px;
+}
+
 html, body, #root {
   height: 100%;
   background-color: #070b12;
@@ -15,6 +54,26 @@ html, body, #root {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Responsive safety net (not a mask) ------------------------ */
+/* Long, unbreakable security identifiers (CVE ids, hashes, incident ids,
+   hostnames, MITRE technique ids, URLs) are the most common cause of
+   horizontal page overflow. Letting them break inside their own box means the
+   page itself never has to be clipped. */
+html {
+  overflow-wrap: break-word;
+}
+
+/* Charts and any raw <svg> must never exceed their parent box. */
+svg {
+  max-width: 100%;
+}
+
+/* An element that explicitly opts into horizontal scrolling (wide security
+   data tables) keeps its own scrollbar; everything else must fit. */
+.overflow-x-auto {
+  max-width: 100%;
 }
 
 /* --- Screen transition ----------------------------------- */
@@ -54,12 +113,21 @@ html, body, #root {
 input:focus { box-shadow: 0 0 0 2px #56b4ff1a; }
 
 :focus-visible {
-  outline: 2px solid rgba(86, 180, 255, 0.45);
+  outline: 2px solid rgba(86, 180, 255, 0.55);
   outline-offset: 1px;
+  border-radius: 4px;
 }
-button:focus-visible, a:focus-visible, input:focus-visible {
-  outline: 2px solid rgba(86, 180, 255, 0.5);
-  outline-offset: 1px;
+/* Interactive elements get an unobstructed, high-contrast focus ring.
+   Elements that manage their own ring opt out with focus-visible:outline-none. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgba(86, 180, 255, 0.7);
+  outline-offset: 2px;
 }
 
 /* --- Custom Cursor & Pointer Interactions ---------------- */

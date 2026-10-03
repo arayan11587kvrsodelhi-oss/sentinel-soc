@@ -223,8 +223,8 @@ export default function AuditLog() {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#627083]">
-              AUDIT TRAIL & SYSTEM INTEGRITY
+            <span className="text-xs font-semibold tracking-wider text-[#627083]">
+              Audit Trail & System Integrity
             </span>
             <ProvenanceBadge type="live" />
           </div>
@@ -238,7 +238,7 @@ export default function AuditLog() {
 
       {/* Filters */}
       <div
-        className="flex items-center gap-3 p-3 rounded-xl"
+        className="flex flex-wrap items-center gap-3 p-3 rounded-xl"
         style={{ background: "#0D131D", border: "1px solid #1D2938" }}
       >
         <div className="relative flex-1 max-w-xs">
@@ -270,12 +270,12 @@ export default function AuditLog() {
           />
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {categories.map((cat) => (
             <button
               key={cat}
               onClick={() => setFilter(cat)}
-              className="px-2.5 py-1 rounded text-xs font-medium transition-all"
+              className="px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: filter === cat ? "#1D2938" : "transparent",
                 color: filter === cat ? "#F4F7FA" : "#627083",
@@ -291,20 +291,26 @@ export default function AuditLog() {
         </span>
       </div>
 
-      {/* Column Headers */}
-      <div
-        className="grid gap-4 px-4 py-2 rounded-lg"
-        style={{
-          background: "#0D131D",
-          border: "1px solid #1D2938",
-          gridTemplateColumns: "140px 1fr 180px 1fr 80px 80px",
-        }}
-      >
+      {/* Audit trail — a fixed six-column log grid (timestamp / action / actor /
+          target / category / result). It keeps readable column widths and
+          scrolls horizontally INSIDE this container, so the page itself never
+          scrolls sideways. */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[880px]">
+          {/* Column Headers */}
+          <div
+            className="grid gap-4 px-4 py-2 rounded-lg"
+            style={{
+              background: "#0D131D",
+              border: "1px solid #1D2938",
+              gridTemplateColumns: "140px 1fr 180px 1fr 80px 80px",
+            }}
+          >
         {["TIMESTAMP", "ACTION", "ACTOR", "TARGET", "CATEGORY", "RESULT"].map(
           (h) => (
             <span
               key={h}
-              className="text-[10px] font-semibold tracking-widest uppercase"
+              className="text-xs font-semibold tracking-wide"
               style={{ color: "#627083" }}
             >
               {h}
@@ -343,7 +349,7 @@ export default function AuditLog() {
               </span>
               {(event as { detail?: string }).detail && (
                 <span
-                  className="font-mono text-[10px] ml-2"
+                  className="font-mono text-xs ml-2"
                   style={{ color: "#627083" }}
                 >
                   {(event as { detail?: string }).detail}
@@ -360,7 +366,7 @@ export default function AuditLog() {
               {event.target}
             </span>
             <span
-              className="text-[10px] font-medium px-1.5 py-0.5 rounded self-start w-fit"
+              className="text-xs font-medium px-1.5 py-0.5 rounded self-start w-fit"
               style={{
                 background:
                   event.category === "Detection"
@@ -391,6 +397,8 @@ export default function AuditLog() {
             </span>
           </div>
         ))}
+        </div>
+        </div>
       </div>
 
       {filtered.length === 0 && (

@@ -1,8 +1,18 @@
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, HTTPException, Query, Path, Request
 from typing import List, Optional, Dict, Any
+import logging
+
 from app.models.schemas import Incident, IncidentStatusUpdate
 from app.services.correlation_service import correlation_engine
-from app.services.ai_service import analyze_incident
+from app.core.logging import get_request_id
+from app.services.ai_service import (
+    AICallError,
+    analyze_incident,
+    client_disconnect_signal,
+    safe_http_detail,
+)
+
+logger = logging.getLogger("sentinel.route.incidents")
 
 router = APIRouter()
 
@@ -42,25 +52,45 @@ async def update_incident_status(
 
 
 @router.post("/incidents/{incident_id}/ai-triage", response_model=Dict[str, Any])
-async def ai_triage_incident(incident_id: str = Path(..., description="The Incident ID")):
+async def ai_triage_incident(
+    request: Request,
+    incident_id: str = Path(..., description="The Incident ID"),
+):
     """Run Sentinel AI Defensive Triage directly on an active incident."""
     inc = correlation_engine.get_incident_by_id(incident_id)
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found.")
 
-    analysis = await analyze_incident({
-        "incident_id": inc.incident_id,
-        "event_type": inc.category,
-        "severity": inc.severity,
-        "source_ip": inc.source_ip,
-        "target": inc.target,
-        "details": inc.summary,
-        "context": {
-            "title": inc.title,
-            "events_count": inc.events_count,
-            "related_cves": inc.related_cves
-        }
-    })
+    cancel_event, watcher = client_disconnect_signal(request)
+    try:
+        analysis = await analyze_incident(
+            {
+                "incident_id": inc.incident_id,
+                "event_type": inc.category,
+                "severity": inc.severity,
+                "source_ip": inc.source_ip,
+                "target": inc.target,
+                "details": inc.summary,
+                "context": {
+                    "title": inc.title,
+                    "events_count": inc.events_count,
+                    "related_cves": inc.related_cves,
+                },
+            },
+            cancel_event=cancel_event,
+        )
+    except AICallError as exc:
+        status_code, detail = safe_http_detail(exc)
+        raise HTTPException(status_code=status_code, detail=detail)
+    except Exception as exc:
+        status_code, detail = safe_http_detail(exc)
+        logger.exception(
+            "Unhandled AI triage error",
+            extra={"incident_id": incident_id, "request_id": get_request_id()},
+        )
+        raise HTTPException(status_code=status_code, detail=detail)
+    finally:
+        watcher.cancel()
 
     inc.ai_analysis = analysis
     return analysis

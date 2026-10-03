@@ -6,6 +6,7 @@ import {
   type KevItem,
 } from "../lib/sentinel-api"
 import { ProvenanceBadge } from "../components/ProvenanceBadge"
+import { SOCIcon } from "../components/ui"
 
 const severityOrder = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const
 const riskColor: Record<string, string> = {
@@ -13,7 +14,7 @@ const riskColor: Record<string, string> = {
   HIGH: "#FF8A4C",
   MEDIUM: "#F4C95D",
   LOW: "#56B4FF",
-  INFO: "#7AA2FF",
+  INFO: "#7C8CFF",
 }
 
 function toSeverityRank(value: string) {
@@ -283,7 +284,7 @@ export default function Vulnerabilities() {
     {
       label: "REMEDIATION STATUS",
       value: pendingRemediation,
-      color: "#7AA2FF",
+      color: "#7C8CFF",
       sub: "Due-date tracked",
     },
   ]
@@ -293,7 +294,7 @@ export default function Vulnerabilities() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#627083]">
+            <span className="text-xs font-semibold tracking-[0.24em] text-[#627083]">
               Vulnerability intelligence & exposure
             </span>
             <ProvenanceBadge type="live" />
@@ -318,7 +319,7 @@ export default function Vulnerabilities() {
           className="rounded-xl border border-[#FF4D5E33] bg-[#0F1720] p-6 text-[#F4F7FA]"
           style={{ boxShadow: "inset 0 0 0 1px rgba(255,77,94,0.08)" }}
         >
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#FF4D5E]">
+          <div className="text-xs font-semibold tracking-[0.22em] text-[#FF4D5E]">
             API error
           </div>
           <h2 className="mt-2 text-lg font-semibold">
@@ -328,7 +329,7 @@ export default function Vulnerabilities() {
           <button
             type="button"
             onClick={() => void fetchVulns()}
-            className="mt-4 rounded-lg border border-[#1D2938] bg-[#111925] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#F4F7FA]"
+            className="mt-4 rounded-lg border border-[#1D2938] bg-[#111925] px-3 py-2 text-xs font-semibold tracking-[0.18em] text-[#F4F7FA]"
           >
             Retry
           </button>
@@ -346,7 +347,7 @@ export default function Vulnerabilities() {
                   transform: index === 0 ? undefined : undefined,
                 }}
               >
-                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#627083]">
+                <div className="text-xs font-semibold tracking-[0.2em] text-[#627083]">
                   {card.label}
                 </div>
                 <div
@@ -355,7 +356,7 @@ export default function Vulnerabilities() {
                 >
                   {card.value}
                 </div>
-                <div className="mt-1 text-[11px] text-[#627083]">
+                <div className="mt-1 text-xs text-[#627083]">
                   {card.sub}
                 </div>
               </div>
@@ -366,7 +367,7 @@ export default function Vulnerabilities() {
             <div className="rounded-xl border border-[#1D2938] bg-[#0D131D] p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#627083]">
+                  <div className="text-xs font-semibold tracking-[0.2em] text-[#627083]">
                     Severity distribution
                   </div>
                   <div className="mt-1 text-sm font-medium text-[#F4F7FA]">
@@ -384,7 +385,7 @@ export default function Vulnerabilities() {
                   const pct = (count / maxSeverityCount) * 100
                   return (
                     <div key={severity}>
-                      <div className="mb-1 flex items-center justify-between text-[11px] text-[#9AA8B8]">
+                      <div className="mb-1 flex items-center justify-between text-xs text-[#9AA8B8]">
                         <span
                           className="font-medium"
                           style={{ color: riskColor[severity] }}
@@ -409,7 +410,7 @@ export default function Vulnerabilities() {
             </div>
 
             <div className="rounded-xl border border-[#FF4D5E22] bg-[#111925] p-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#FF4D5E]">
+              <div className="text-xs font-semibold tracking-[0.2em] text-[#FF4D5E]">
                 Immediate attention
               </div>
               <div className="mt-3 space-y-3">
@@ -430,7 +431,7 @@ export default function Vulnerabilities() {
                           {item.id}
                         </span>
                         <span
-                          className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                          className="rounded px-1.5 py-0.5 text-xs font-semibold"
                           style={{
                             background: "rgba(255,77,94,0.12)",
                             color: "#FF4D5E",
@@ -442,7 +443,7 @@ export default function Vulnerabilities() {
                       <div className="mt-2 text-sm font-medium text-[#F4F7FA]">
                         {item.description}
                       </div>
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-[#9AA8B8]">
+                      <div className="mt-2 flex items-center justify-between text-xs text-[#9AA8B8]">
                         <span>{item.severity}</span>
                         <span>{item.cvss?.toFixed(1) ?? "N/A"}</span>
                       </div>
@@ -478,14 +479,14 @@ export default function Vulnerabilities() {
               />
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-[#627083]">Severity:</span>
               {["ALL", ...severityOrder].map((level) => (
                 <button
                   key={level}
                   type="button"
                   onClick={() => setRiskFilter(level)}
-                  className="rounded px-2.5 py-1 text-[11px] font-medium transition-colors"
+                  className="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
                   style={{
                     background:
                       riskFilter === level ? "#1D2938" : "transparent",
@@ -501,14 +502,14 @@ export default function Vulnerabilities() {
               ))}
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-[#627083]">Status:</span>
               {["ALL", "KNOWN_EXPLOITED", "GENERAL"].map((state) => (
                 <button
                   key={state}
                   type="button"
                   onClick={() => setStatusFilter(state as typeof statusFilter)}
-                  className="rounded px-2.5 py-1 text-[11px] font-medium transition-colors"
+                  className="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
                   style={{
                     background:
                       statusFilter === state ? "#1D2938" : "transparent",
@@ -531,43 +532,44 @@ export default function Vulnerabilities() {
             <button
               type="button"
               onClick={() => setKevOnly((current) => !current)}
-              className="rounded border px-3 py-1.5 text-[11px] font-semibold"
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold"
               style={{
                 background: kevOnly ? "rgba(255,138,76,0.15)" : "#111925",
                 color: kevOnly ? "#FF8A4C" : "#627083",
                 borderColor: kevOnly ? "rgba(255,138,76,0.4)" : "#1D2938",
               }}
             >
-              🔥 KEV only
+              <SOCIcon name="warning" className="w-3.5 h-3.5 flex-shrink-0" />
+              KEV only
             </button>
 
-            <div className="ml-auto flex items-center gap-2 text-xs text-[#627083]">
+            <div className="ml-auto flex flex-wrap items-center gap-2 text-xs text-[#627083]">
               <button
                 type="button"
                 onClick={() => handleSort("severity")}
-                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-[10px] uppercase tracking-[0.15em]"
+                className="rounded-lg border border-[#1D2938] bg-[#111925] px-2 py-1 text-xs tracking-[0.15em]"
               >
                 Severity
               </button>
               <button
                 type="button"
                 onClick={() => handleSort("newest")}
-                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-[10px] uppercase tracking-[0.15em]"
+                className="rounded-lg border border-[#1D2938] bg-[#111925] px-2 py-1 text-xs tracking-[0.15em]"
               >
                 Newest
               </button>
               <button
                 type="button"
                 onClick={() => handleSort("cve")}
-                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-[10px] uppercase tracking-[0.15em]"
+                className="rounded-lg border border-[#1D2938] bg-[#111925] px-2 py-1 text-xs tracking-[0.15em]"
               >
                 CVE
               </button>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-[#1D2938]">
-            <table className="w-full border-collapse text-left">
+          <div className="overflow-x-auto rounded-xl border border-[#1D2938]">
+            <table className="w-full min-w-[640px] border-collapse text-left">
               <thead>
                 <tr
                   style={{
@@ -586,7 +588,7 @@ export default function Vulnerabilities() {
                   ].map((header) => (
                     <th
                       key={header}
-                      className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#627083]"
+                      className="px-4 py-2.5 text-xs font-semibold tracking-[0.2em] text-[#627083]"
                     >
                       {header}
                     </th>
@@ -632,7 +634,7 @@ export default function Vulnerabilities() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className="rounded px-2 py-0.5 text-[10px] font-semibold"
+                          className="rounded px-2 py-0.5 text-xs font-semibold"
                           style={{
                             background: `${severityColor}20`,
                             color: severityColor,
@@ -647,7 +649,7 @@ export default function Vulnerabilities() {
                             {v.description}
                           </div>
                           {kevMeta?.shortDescription && (
-                            <div className="mt-1 text-[10px] text-[#627083]">
+                            <div className="mt-1 text-xs text-[#627083]">
                               {kevMeta.shortDescription}
                             </div>
                           )}
@@ -660,7 +662,7 @@ export default function Vulnerabilities() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className="rounded px-2 py-0.5 text-[10px] font-semibold"
+                          className="rounded px-2 py-0.5 text-xs font-semibold"
                           style={{
                             background: v.is_kev
                               ? "rgba(255,138,76,0.12)"
@@ -673,11 +675,11 @@ export default function Vulnerabilities() {
                       </td>
                       <td className="px-4 py-3">
                         {v.is_kev ? (
-                          <span className="rounded border border-[#FF8A4C40] bg-[#FF8A4C1A] px-2 py-0.5 text-[10px] font-semibold text-[#FF8A4C]">
+                          <span className="rounded border border-[#FF8A4C40] bg-[#FF8A4C1A] px-2 py-0.5 text-xs font-semibold text-[#FF8A4C]">
                             KEV
                           </span>
                         ) : (
-                          <span className="text-[10px] text-[#627083]">—</span>
+                          <span className="text-xs text-[#627083]">—</span>
                         )}
                       </td>
                     </tr>
@@ -706,7 +708,7 @@ export default function Vulnerabilities() {
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#1D2938] bg-[#0D131D] p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#627083]">
+                <div className="text-xs font-semibold tracking-[0.22em] text-[#627083]">
                   {selectedVuln.is_kev
                     ? "Known Exploited Vulnerability"
                     : "General Vulnerability"}
@@ -718,7 +720,7 @@ export default function Vulnerabilities() {
               <button
                 type="button"
                 onClick={() => setSelectedVuln(null)}
-                className="rounded border border-[#1D2938] bg-[#111925] px-2 py-1 text-xs text-[#9AA8B8]"
+                className="rounded-lg border border-[#1D2938] bg-[#111925] px-2 py-1 text-xs text-[#9AA8B8]"
               >
                 Close
               </button>
@@ -726,7 +728,7 @@ export default function Vulnerabilities() {
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                <div className="text-xs tracking-[0.2em] text-[#627083]">
                   Title
                 </div>
                 <div className="mt-2 text-sm text-[#F4F7FA]">
@@ -735,12 +737,12 @@ export default function Vulnerabilities() {
                 </div>
               </div>
               <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                <div className="text-xs tracking-[0.2em] text-[#627083]">
                   Severity
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <span
-                    className="rounded px-2 py-0.5 text-[10px] font-semibold"
+                    className="rounded px-2 py-0.5 text-xs font-semibold"
                     style={{
                       background: `${riskColor[selectedVuln.severity] || "#56B4FF"}20`,
                       color: riskColor[selectedVuln.severity] || "#56B4FF",
@@ -756,17 +758,17 @@ export default function Vulnerabilities() {
             </div>
 
             <div className="mt-4 rounded-lg border border-[#1D2938] bg-[#111925] p-4">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+              <div className="text-xs tracking-[0.2em] text-[#627083]">
                 Description
               </div>
-              <p className="mt-2 text-sm leading-6 text-[#D7E0EA]">
+              <p className="mt-2 text-sm leading-6 text-[#E8EEF7]">
                 {selectedVuln.description}
               </p>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                <div className="text-xs tracking-[0.2em] text-[#627083]">
                   Vendor / product
                 </div>
                 <div className="mt-2 text-sm text-[#F4F7FA]">
@@ -777,7 +779,7 @@ export default function Vulnerabilities() {
                 </div>
               </div>
               <div className="rounded-lg border border-[#1D2938] bg-[#111925] p-3">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                <div className="text-xs tracking-[0.2em] text-[#627083]">
                   Published
                 </div>
                 <div className="mt-2 text-sm text-[#F4F7FA]">
@@ -790,7 +792,7 @@ export default function Vulnerabilities() {
               selectedVuln.kev_details ||
               kevLookup.get(selectedVuln.id.toUpperCase())) && (
               <div className="mt-4 rounded-lg border border-[#FF8A4C40] bg-[#111925] p-4">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-[#FF8A4C]">
+                <div className="text-xs tracking-[0.2em] text-[#FF8A4C]">
                   Remediation
                 </div>
                 <div className="mt-2 text-sm text-[#F4F7FA]">
@@ -800,7 +802,7 @@ export default function Vulnerabilities() {
                     "Apply vendor remediation guidance and verify impacted systems are patched."}
                 </div>
                 {selectedVuln.kev_details?.due_date && (
-                  <div className="mt-2 text-[11px] text-[#9AA8B8]">
+                  <div className="mt-2 text-xs text-[#9AA8B8]">
                     Due date: {formatDate(selectedVuln.kev_details.due_date)}
                   </div>
                 )}
@@ -809,7 +811,7 @@ export default function Vulnerabilities() {
 
             {selectedVuln.references && selectedVuln.references.length > 0 && (
               <div className="mt-4 rounded-lg border border-[#1D2938] bg-[#111925] p-4">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-[#627083]">
+                <div className="text-xs tracking-[0.2em] text-[#627083]">
                   References
                 </div>
                 <ul className="mt-3 space-y-2">
@@ -829,7 +831,7 @@ export default function Vulnerabilities() {
               </div>
             )}
 
-            <div className="mt-4 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.18em] text-[#627083]">
+            <div className="mt-4 flex flex-wrap gap-2 text-xs tracking-[0.18em] text-[#627083]">
               {selectedVuln.cwe && (
                 <span className="rounded border border-[#1D2938] bg-[#0D131D] px-2 py-1">
                   {selectedVuln.cwe}

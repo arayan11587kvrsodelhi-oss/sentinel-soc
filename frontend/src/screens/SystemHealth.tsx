@@ -1,4 +1,5 @@
 import { ProvenanceBadge } from "../components/ProvenanceBadge"
+import { formatHealthStatus } from "../lib/design-tokens"
 
 const subsystems = [
   {
@@ -145,8 +146,8 @@ const statusBorder: Record<string, string> = {
 export default function SystemHealth() {
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold" style={{ color: "#F4F7FA" }}>
             System Health
           </h1>
@@ -154,12 +155,14 @@ export default function SystemHealth() {
             Infrastructure monitoring and service status
           </p>
         </div>
-        <ProvenanceBadge type="live" />
+        <div className="shrink-0">
+          <ProvenanceBadge type="live" />
+        </div>
       </div>
 
       {/* Overall Status Banner */}
       <div
-        className="rounded-xl p-4 flex items-center gap-4"
+        className="rounded-xl p-4 flex flex-wrap items-center gap-x-3 gap-y-3 sm:gap-4"
         style={{ background: "#42D39208", border: "1px solid #42D39225" }}
       >
         <div
@@ -168,55 +171,55 @@ export default function SystemHealth() {
         >
           <div className="w-4 h-4 rounded-full bg-[#42D392] animate-pulse" />
         </div>
-        <div>
-          <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className="text-base font-semibold"
               style={{ color: "#42D392" }}
             >
-              ● HEALTHY
+              ● Operational
             </span>
             <span className="text-xs" style={{ color: "#627083" }}>
-              All systems operational
+              All subsystems nominal
             </span>
           </div>
           <div
-            className="flex items-center gap-4 mt-1 text-xs"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs"
             style={{ color: "#627083" }}
           >
             <span className="font-mono">
               Last check: 2026-08-29 18:35:02 UTC
             </span>
-            <span>•</span>
+            <span className="hidden sm:inline">•</span>
             <span>6 / 6 services healthy</span>
           </div>
         </div>
-        <div className="ml-auto">
+        <div className="sm:ml-auto shrink-0">
           <ProvenanceBadge type="live" />
         </div>
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 gap-3 min-[420px]:gap-4 sm:grid-cols-3 xl:grid-cols-6">
         {metrics.map((m) => (
           <div
             key={m.label}
-            className="rounded-xl p-3"
+            className="rounded-xl p-3 sm:p-4 min-w-0"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <div
-              className="text-[10px] font-semibold uppercase tracking-wider mb-1"
+              className="text-xs font-semibold mb-1.5 leading-tight break-words"
               style={{ color: "#627083" }}
             >
               {m.label}
             </div>
             <div
-              className="text-xl font-semibold font-mono tabular-nums"
+              className="text-xl sm:text-2xl font-semibold font-mono tabular-nums leading-tight break-words"
               style={{ color: "#F4F7FA" }}
             >
               {m.value}
             </div>
-            <div className="text-[10px]" style={{ color: "#627083" }}>
+            <div className="text-xs mt-1" style={{ color: "#627083" }}>
               {m.sub}
             </div>
           </div>
@@ -226,20 +229,20 @@ export default function SystemHealth() {
       {/* Subsystem Cards */}
       <div>
         <span
-          className="text-xs font-semibold tracking-widest uppercase block mb-3"
+          className="text-xs font-semibold tracking-wide block mb-3"
           style={{ color: "#627083" }}
         >
-          SUBSYSTEM STATUS
+          Subsystem status
         </span>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {subsystems.map((sys) => (
             <div
               key={sys.name}
-              className="rounded-xl p-4"
+              className="rounded-xl p-4 min-w-0"
               style={{ background: "#111925", border: "1px solid #1D2938" }}
             >
-              <div className="flex items-start justify-between mb-3">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 mb-3">
+                <div className="min-w-0">
                   <h3
                     className="text-sm font-semibold"
                     style={{ color: "#F4F7FA" }}
@@ -247,13 +250,13 @@ export default function SystemHealth() {
                     {sys.name}
                   </h3>
                   {(sys as { badge?: string }).badge && (
-                    <span className="text-[10px]" style={{ color: "#627083" }}>
+                    <span className="text-xs" style={{ color: "#627083" }}>
                       {(sys as { badge?: string }).badge}
                     </span>
                   )}
                 </div>
                 <div
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold"
+                  className="flex shrink-0 items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold whitespace-nowrap max-w-full"
                   style={{
                     background: statusBg[sys.status] ?? "#42D39215",
 
@@ -266,7 +269,7 @@ export default function SystemHealth() {
                     className="w-1.5 h-1.5 rounded-full"
                     style={{ background: sys.color }}
                   />
-                  {sys.status}
+                  {formatHealthStatus(sys.status)}
                 </div>
               </div>
 
@@ -378,7 +381,7 @@ export default function SystemHealth() {
                 style={{ borderTop: "1px solid #1D293840" }}
               >
                 <span
-                  className="text-[10px] font-mono"
+                  className="text-xs font-mono"
                   style={{ color: "#627083" }}
                 >
                   {sys.lastCheck}
@@ -395,12 +398,12 @@ export default function SystemHealth() {
         style={{ background: "#111925", border: "1px solid #1D2938" }}
       >
         <span
-          className="text-xs font-semibold tracking-widest uppercase block mb-3"
+          className="text-xs font-semibold tracking-wide block mb-3"
           style={{ color: "#627083" }}
         >
-          STATUS LEGEND
+          Status legend
         </span>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           {[
             {
               status: "OPERATIONAL",
@@ -426,7 +429,7 @@ export default function SystemHealth() {
               desc: "Attempting reconnection",
             },
           ].map((s) => (
-            <div key={s.status} className="flex items-center gap-2">
+            <div key={s.status} className="flex items-center gap-2 min-w-0">
               <div
                 className="w-2 h-2 rounded-full"
                 style={{ background: s.color }}
@@ -435,7 +438,7 @@ export default function SystemHealth() {
                 className="text-xs font-semibold"
                 style={{ color: s.color }}
               >
-                {s.status}
+                {formatHealthStatus(s.status)}
               </span>
               <span className="text-xs" style={{ color: "#627083" }}>
                 — {s.desc}

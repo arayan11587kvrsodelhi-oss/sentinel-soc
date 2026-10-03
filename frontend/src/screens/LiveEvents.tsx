@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react"
 import { SecurityEvent, getThreats, wsManager } from "../lib/sentinel-api"
 import { ProvenanceBadge } from "../components/ProvenanceBadge"
+import { formatEventType } from "../lib/design-tokens"
+import { SOCIcon } from "../components/ui"
 
 const eventTypeColor: Record<string, string> = {
   AUTH_FAILURE: "#FF4D5E",
@@ -154,8 +156,8 @@ export default function LiveEvents() {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#627083]">
-              REAL-TIME SOC TELEMETRY BUS
+            <span className="text-xs font-semibold tracking-wider text-[#627083]">
+              Real-time SOC Telemetry Bus
             </span>
             <ProvenanceBadge type="live" />
           </div>
@@ -168,14 +170,15 @@ export default function LiveEvents() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() =>
               wsManager.triggerScenario("scenario_web_cve_exploitation")
             }
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer bg-[#56B4FF15] text-[#56B4FF] border border-[#56B4FF30]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer bg-[#56B4FF15] text-[#56B4FF] border border-[#56B4FF30]"
           >
-            ⚡ Trigger Web Exploit Scenario
+            <SOCIcon name="response" className="w-3.5 h-3.5" />
+            Trigger Web Exploit Scenario
           </button>
 
           <button
@@ -220,13 +223,13 @@ export default function LiveEvents() {
           />
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-[#627083]">Severity:</span>
           {["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"].map((s) => (
             <button
               key={s}
               onClick={() => setFilterSev(s)}
-              className="px-2 py-1 rounded text-xs font-medium transition-all"
+              className="px-2 py-1 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: filterSev === s ? "#1D2938" : "transparent",
                 color: filterSev === s ? "#F4F7FA" : "#627083",
@@ -242,12 +245,12 @@ export default function LiveEvents() {
         </div>
       </div>
 
-      {/* Events Table */}
+      {/* Events Table — wide telemetry table, scrolls inside its own container */}
       <div
-        className="rounded-xl overflow-hidden font-mono"
+        className="rounded-xl overflow-x-auto font-mono"
         style={{ border: "1px solid #1D2938" }}
       >
-        <table className="w-full text-left text-xs">
+        <table className="w-full min-w-[640px] text-left text-xs">
           <thead>
             <tr
               style={{
@@ -265,7 +268,7 @@ export default function LiveEvents() {
               ].map((h) => (
                 <th
                   key={h}
-                  className="px-4 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-[#627083]"
+                  className="px-4 py-2.5 text-xs font-semibold tracking-wide text-[#627083]"
                 >
                   {h}
                 </th>
@@ -288,7 +291,7 @@ export default function LiveEvents() {
 
                 <td className="px-4 py-2">
                   <span
-                    className="text-[10px] font-bold px-1.5 py-0.2 rounded"
+                    className="text-xs font-bold px-1.5 py-1 rounded"
                     style={{
                       background:
                         ev.severity === "CRITICAL"
@@ -317,7 +320,7 @@ export default function LiveEvents() {
                     className="text-xs font-semibold"
                     style={{ color: eventTypeColor[ev.type] || "#9AA8B8" }}
                   >
-                    {ev.type}
+                    {formatEventType(ev.type)}
                   </span>
                 </td>
 

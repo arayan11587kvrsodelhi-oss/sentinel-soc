@@ -7,7 +7,7 @@ Validation fails fast at import time so misconfiguration is caught immediately.
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     ai_api_base_url: Optional[str] = Field(default=None, alias="AI_API_BASE_URL")
     ai_model: str = Field(default="gpt-3.5-turbo", alias="AI_MODEL")
 
+    # AI inference reliability budget.
+    # These bound the upstream call: a single analysis can never turn into an
+    # unbounded retry storm or an unbounded prompt.
+    ai_request_timeout_seconds: float = Field(default=20.0, alias="AI_REQUEST_TIMEOUT_SECONDS")
+    ai_max_attempts: int = Field(default=3, alias="AI_MAX_ATTEMPTS")
+    ai_retry_base_seconds: float = Field(default=0.5, alias="AI_RETRY_BASE_SECONDS")
+    ai_retry_max_seconds: float = Field(default=8.0, alias="AI_RETRY_MAX_SECONDS")
+    ai_max_context_chars: int = Field(default=6000, alias="AI_MAX_CONTEXT_CHARS")
+    ai_max_completion_tokens: int = Field(default=1500, alias="AI_MAX_COMPLETION_TOKENS")
+
     # NVD API key (optional but recommended)
     nvd_api_key: Optional[str] = Field(default=None, alias="NVD_API_KEY")
 
@@ -56,6 +66,47 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"  # Allow hosting platforms to inject extra vars without crashing
+
+    @field_validator("ai_max_attempts", mode="before")
+    @classmethod
+    def _clamp_ai_attempts(cls, value: Any) -> int:
+        """Hard-clamp retries to 1..3.
+
+        A misconfigured deployment must never be able to turn the AI retry
+        loop into an unbounded storm against the upstream provider.
+        """
+        try:
+            attempts = int(value)
+        except (TypeError, ValueError):
+            return 3
+        return max(1, min(3, attempts))
+
+    @field_validator(
+        "ai_retry_base_seconds",
+        "ai_retry_max_seconds",
+        "ai_request_timeout_seconds",
+        mode="before",
+    )
+    @classmethod
+    def _clamp_ai_seconds(cls, value: Any) -> float:
+        """Keep retry/timeout budgets positive and finite."""
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            return 1.0
+        if seconds != seconds or seconds in (float("inf"), float("-inf")):  # NaN/inf
+            return 1.0
+        return max(0.0, min(300.0, seconds))
+
+    @field_validator("ai_max_context_chars", "ai_max_completion_tokens", mode="before")
+    @classmethod
+    def _clamp_ai_budget(cls, value: Any) -> int:
+        """Keep prompt/response budgets strictly positive and bounded."""
+        try:
+            size = int(value)
+        except (TypeError, ValueError):
+            return 1024
+        return max(256, min(200_000, size))
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -144,18 +144,18 @@ export default function MitreAttack() {
         </button>
       </div>
 
-      <div className="grid grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Attack Path */}
-        <div className="col-span-2 space-y-3">
+        <div className="col-span-1 lg:col-span-2 space-y-3">
           <div
             className="rounded-xl p-4"
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-4"
+              className="text-xs font-semibold tracking-wide block mb-4"
               style={{ color: "#627083" }}
             >
-              INCIDENT ATT&CK PATH
+              Incident ATT&CK Path
             </span>
 
             <div className="relative">
@@ -210,13 +210,13 @@ export default function MitreAttack() {
                     >
                       <div className="flex items-center justify-between mb-0.5">
                         <span
-                          className="text-[10px]"
+                          className="text-xs"
                           style={{ color: "#627083" }}
                         >
                           {step.phase}
                         </span>
                         <span
-                          className="text-[10px] font-medium"
+                          className="text-xs font-medium"
                           style={{ color: statusColor(step.status) }}
                         >
                           {step.status === "confirmed"
@@ -237,7 +237,7 @@ export default function MitreAttack() {
                       </div>
                       <div className="flex items-center justify-between mt-1">
                         <span
-                          className="text-[10px] font-mono"
+                          className="text-xs font-mono"
                           style={{ color: "#627083" }}
                         >
                           {step.time !== "—"
@@ -245,7 +245,7 @@ export default function MitreAttack() {
                             : "Not observed"}
                         </span>
                         <span
-                          className="text-[10px]"
+                          className="text-xs"
                           style={{ color: statusColor(step.status) }}
                         >
                           {step.confidence}%
@@ -260,17 +260,17 @@ export default function MitreAttack() {
         </div>
 
         {/* Technique Detail */}
-        <div className="col-span-3 space-y-4">
+        <div className="col-span-1 lg:col-span-3 space-y-4">
           <div
             className="rounded-xl p-5"
             style={{ background: "#111925", border: "1px solid #7C8CFF25" }}
           >
             <div className="flex items-center justify-between mb-4">
               <span
-                className="text-xs font-semibold tracking-widest uppercase"
+                className="text-xs font-semibold tracking-wide"
                 style={{ color: "#627083" }}
               >
-                TECHNIQUE DETAIL
+                Technique Detail
               </span>
               <span
                 className="text-xs font-medium"
@@ -309,7 +309,7 @@ export default function MitreAttack() {
                 >
                   {selectedStep.confidence}%
                 </div>
-                <div className="text-[10px]" style={{ color: "#627083" }}>
+                <div className="text-xs" style={{ color: "#627083" }}>
                   confidence
                 </div>
               </div>
@@ -341,10 +341,10 @@ export default function MitreAttack() {
                 }}
               >
                 <span
-                  className="text-[10px] font-semibold uppercase tracking-wider block mb-1"
+                  className="text-xs font-semibold tracking-wider block mb-1"
                   style={{ color: "#627083" }}
                 >
-                  SUB-TECHNIQUE
+                  Sub-technique
                 </span>
                 <div className="flex items-center gap-2">
                   <span
@@ -363,10 +363,10 @@ export default function MitreAttack() {
             {/* Evidence for this technique */}
             <div>
               <span
-                className="text-[10px] font-semibold uppercase tracking-wider block mb-2"
+                className="text-xs font-semibold tracking-wider block mb-2"
                 style={{ color: "#627083" }}
               >
-                EVIDENCE
+                Evidence
               </span>
               <div className="space-y-2">
                 {selectedStep.technique === "T1110" &&
@@ -416,10 +416,10 @@ export default function MitreAttack() {
             style={{ background: "#111925", border: "1px solid #1D2938" }}
           >
             <span
-              className="text-xs font-semibold tracking-widest uppercase block mb-3"
+              className="text-xs font-semibold tracking-wide block mb-3"
               style={{ color: "#627083" }}
             >
-              KILL CHAIN PROGRESS
+              Kill Chain Progress
             </span>
             <div className="flex items-center gap-1">
               {attackChain.map((step, i) => (
@@ -436,7 +436,7 @@ export default function MitreAttack() {
                     }}
                   />
                   <div
-                    className="text-[9px] mt-1 text-center truncate"
+                    className="text-xs mt-1 text-center truncate"
                     style={{ color: "#627083" }}
                   >
                     {step.phase.split(" ")[0]}
@@ -455,17 +455,17 @@ export default function MitreAttack() {
           style={{ background: "#111925", border: "1px solid #1D2938" }}
         >
           <span
-            className="text-xs font-semibold tracking-widest uppercase block mb-4"
+            className="text-xs font-semibold tracking-wide block mb-4"
             style={{ color: "#627083" }}
           >
-            ATT&CK MATRIX — ENTERPRISE (PARTIAL)
+            ATT&CK Matrix — Enterprise (Partial)
           </span>
           <div className="overflow-x-auto">
             <div className="flex gap-2 min-w-max">
               {matrixTechniques.map((col) => (
                 <div key={col.tactic} className="w-36">
                   <div
-                    className="text-[10px] font-semibold uppercase tracking-wider mb-2 px-1"
+                    className="text-xs font-semibold tracking-wider mb-2 px-1"
                     style={{ color: "#627083" }}
                   >
                     {col.tactic}
@@ -477,7 +477,7 @@ export default function MitreAttack() {
                       return (
                         <div
                           key={tech}
-                          className="px-2 py-1 rounded text-[10px] font-mono cursor-pointer transition-all"
+                          className="px-2 py-1 rounded text-xs font-mono cursor-pointer transition-all"
                           style={{
                             background: isDetected ? "#FF4D5E20" : "#0D131D",
 
